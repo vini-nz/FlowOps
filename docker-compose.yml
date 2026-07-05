@@ -1,0 +1,59 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: flowops-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-flowops}
+      POSTGRES_USER: ${DB_USER:-flowops}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-flowops}
+    ports:
+      - "5432:5432"
+    volumes:
+      - flowops_pgdata:/var/lib/postgresql/data
+      # Scripts em ordem alfabética: o DDL cria o schema, o seed popula depois.
+      - ./db/flowops_ddl.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./db/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-flowops} -d ${DB_NAME:-flowops}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    container_name: flowops-backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-flowops}
+      DB_USER: ${DB_USER:-flowops}
+      DB_PASSWORD: ${DB_PASSWORD:-flowops}
+      JWT_SECRET: ${JWT_SECRET:-troque-esta-chave-em-producao-minimo-256-bits-0123456789abcdef}
+      JWT_EXPIRATION_MINUTES: ${JWT_EXPIRATION_MINUTES:-60}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
+    ports:
+      - "8080:8080"
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: flowops-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:8080/api/v1}
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/index.html:/app/index.html
+
+volumes:
+  flowops_pgdata:
