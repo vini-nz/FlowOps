@@ -8,23 +8,19 @@ import java.util.Optional;
 
 public interface UserRepository extends JpaRepository<User, Long> {
 
-    // Login e feito por e-mail. Como o UNIQUE constraint real e (company_id, email),
-    // um mesmo e-mail pode existir em empresas diferentes; para o MVP (login simples,
-    // sem selecao de empresa na tela) assumimos e-mail unico por instalacao ativa.
+    // Email e globalmente unico (UNIQUE(email) no DDL, corrigido em 6/jul/2026 -
+    // ver CHANGELOG e docs/adr/0001-modelo-de-usuario.md). Antes disso o
+    // constraint era (company_id, email), o que permitia o mesmo email em
+    // empresas diferentes e quebrava esta query com
+    // IncorrectResultSizeDataAccessException quando isso acontecia, pois
+    // Optional<User> espera no maximo uma linha.
     //
     // @EntityGraph forca o carregamento de "company" na MESMA query, via JOIN,
-    // mesmo com company mapeado como LAZY na entidade User. Isso e necessario
-    // porque este metodo e chamado de dois lugares com ciclos de vida de sessao
-    // Hibernate diferentes:
-    //   1) AuthService.login()          -> dentro de uma transacao (@Transactional),
-    //      entao o LAZY funcionaria mesmo sem o EntityGraph.
-    //   2) JwtAuthenticationFilter      -> FORA de qualquer transacao (filtro roda
-    //      antes do Controller/Service). Sem o EntityGraph, a sessao Hibernate que
-    //      carregou o User ja fecha antes do Controller acessar user.getCompany(),
-    //      lancando LazyInitializationException (ver GlobalExceptionHandler: essa
-    //      excecao era capturada por "catch (Exception ex)" e devolvida como 500,
-    //      escondendo a causa real).
+    // mesmo com company mapeado como LAZY na entidade User. Necessario porque
+    // este metodo tambem e chamado pelo JwtAuthenticationFilter, fora de
+    // qualquer transacao.
     @EntityGraph(attributePaths = "company")
     Optional<User> findByEmailAndActiveTrue(String email);
 }
+
 

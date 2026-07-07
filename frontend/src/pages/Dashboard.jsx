@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext.jsx'
 import api from '../services/api.js'
 
@@ -18,11 +19,14 @@ export default function Dashboard() {
       <header className="flex items-center justify-between border-b border-gray-200 bg-white px-6 py-4">
         <div>
           <h1 className="text-lg font-medium text-flowops-900">FlowOps</h1>
-          <p className="text-sm text-gray-500">{user?.companyName}</p>
+          <nav className="mt-1 flex gap-4 text-sm">
+            <span className="font-medium text-flowops-700">Dashboard</span>
+            <Link to="/clients" className="text-gray-500 hover:text-flowops-700">Clientes</Link>
+          </nav>
         </div>
         <div className="flex items-center gap-4">
           <span className="text-sm text-gray-600">
-            {user?.name} <span className="text-gray-400">({user?.role})</span>
+            {user?.name} <span className="text-gray-400">({user?.role} — {user?.companyName})</span>
           </span>
           <button
             onClick={logout}

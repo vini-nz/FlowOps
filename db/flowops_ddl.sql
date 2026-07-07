@@ -48,16 +48,14 @@ CREATE TABLE users (
     uuid            UUID NOT NULL UNIQUE DEFAULT gen_random_uuid(),
     company_id      BIGINT NOT NULL REFERENCES companies(id),
     name            VARCHAR(150) NOT NULL,
-    email           VARCHAR(150) NOT NULL,
+    email           VARCHAR(150) NOT NULL UNIQUE,
     password_hash   VARCHAR(255) NOT NULL,
     role            VARCHAR(30) NOT NULL
                     CHECK (role IN ('ADMIN_EMPRESA', 'OPERADOR', 'TECNICO')),
     is_active       BOOLEAN NOT NULL DEFAULT TRUE,
     last_login_at   TIMESTAMPTZ,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-
-    CONSTRAINT uq_users_company_email UNIQUE (company_id, email)
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE INDEX idx_users_company_id ON users(company_id);
@@ -87,6 +85,12 @@ CREATE TABLE clients (
 
 CREATE INDEX idx_clients_company_id ON clients(company_id);
 CREATE INDEX idx_clients_company_active ON clients(company_id) WHERE deleted_at IS NULL;
+
+-- Documento (CPF/CNPJ) e opcional, mas quando informado nao pode se repetir
+-- dentro da mesma empresa. Parcial porque document costuma vir NULL no
+-- cadastro inicial (nem toda empresa exige documento na hora).
+CREATE UNIQUE INDEX uq_clients_company_document
+    ON clients(company_id, document) WHERE document IS NOT NULL AND deleted_at IS NULL;
 
 CREATE TRIGGER trg_clients_updated_at
     BEFORE UPDATE ON clients

@@ -2,6 +2,7 @@ package com.flowops.exception;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.AuthenticationException;
@@ -17,6 +18,27 @@ import java.util.Map;
 public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
+    @ExceptionHandler(BusinessRuleException.class)
+    public ResponseEntity<Map<String, Object>> handleBusinessRule(BusinessRuleException ex) {
+        return buildResponse(HttpStatus.CONFLICT, ex.getMessage());
+    }
+
+    // Rede de seguranca, nao o fluxo principal: os pontos que podem violar
+    // uma constraint (ex: ClientService.assertDocumentAvailable) ja checam
+    // antes de tentar salvar. Se mesmo assim uma violacao chegar aqui -
+    // condicao de corrida, ou uma constraint nova que ainda nao tem checagem
+    // explicita no Service - devolvemos um 409 legivel em vez de um 500 cru.
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<Map<String, Object>> handleDataIntegrityViolation(DataIntegrityViolationException ex) {
+        log.warn("Violacao de integridade nao esperada pela camada de validacao", ex);
+        return buildResponse(HttpStatus.CONFLICT, "Operação conflita com dados existentes");
+    }
+
+    @ExceptionHandler(ResourceNotFoundException.class)
+    public ResponseEntity<Map<String, Object>> handleResourceNotFound(ResourceNotFoundException ex) {
+        return buildResponse(HttpStatus.NOT_FOUND, ex.getMessage());
+    }
 
     @ExceptionHandler(InvalidCredentialsException.class)
     public ResponseEntity<Map<String, Object>> handleInvalidCredentials(InvalidCredentialsException ex) {
