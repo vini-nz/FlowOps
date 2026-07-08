@@ -108,6 +108,7 @@ export default function Clients() {
           <nav className="mt-1 flex gap-4 text-sm">
             <Link to="/dashboard" className="text-gray-500 hover:text-flowops-700">Dashboard</Link>
             <span className="font-medium text-flowops-700">Clientes</span>
+            <Link to="/work-orders" className="text-gray-500 hover:text-flowops-700">WorkOrders</Link>
           </nav>
         </div>
         <button

@@ -3,6 +3,41 @@
 Todas as mudanças relevantes do projeto são registradas aqui.
 Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
+## [Sprint 3] — WorkOrders
+
+### Adicionado
+- CRUD de WorkOrders com state machine completa (`WorkOrderController`,
+  `WorkOrderService`, `WorkOrderStatusTransitions`)
+- Transições de status validadas contra a state machine documentada desde
+  a Sprint 1 (`SOLICITACAO_RECEBIDA → ... → FINALIZADO`), com estados
+  terminais (`RECUSADO`, `FINALIZADO`) que não permitem nenhuma transição
+  adicional
+- Atribuição de responsável, com isolamento por empresa (não é possível
+  atribuir um usuário de outra empresa)
+- Registro de eventos de domínio (`domain_events`) em toda criação,
+  transição de status e atribuição — primeira implementação real da
+  Timeline documentada em Negócio e Domínio
+- RBAC efetivamente aplicado via `@PreAuthorize` (`@EnableMethodSecurity`
+  habilitado no `SecurityConfig`): criação, transição de status e
+  atribuição restritas a `ADMIN_EMPRESA` e `OPERADOR`, conforme a matriz de
+  permissões documentada desde a Sprint 1 mas nunca antes aplicada em código
+- Endpoint mínimo `GET /users` (uuid + nome de usuários ativos), usado para
+  popular o campo de responsável no frontend
+- Frontend: tela de WorkOrders com filtro por status, paginação, criação e
+  botões de avanço de status coerentes com as transições válidas
+
+### Testado
+- `WorkOrderStatusTransitions` compilada e testada isoladamente com `javac`
+  puro (sem dependências de Spring) — 28 cenários cobrindo caminho feliz,
+  estados terminais, pulos de etapa e tentativas de retrocesso, todos
+  passando
+- Ciclo de vida completo de uma WorkOrder (criação → transição →
+  atribuição → timeline) validado contra PostgreSQL 16 real
+- Isolamento multi-tenant de WorkOrders confirmado: uma WorkOrder de uma
+  empresa é invisível a uma consulta feita com o `company_id` de outra
+
+---
+
 ## [Sprint 2 — correções pós-review] — 6 jul/2026
 
 ### Corrigido

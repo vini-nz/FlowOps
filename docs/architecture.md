@@ -99,8 +99,35 @@ usuário global neste momento do projeto.
 ## Isolamento multi-tenant reforçado em toda consulta por identificador
 
 Nenhuma consulta que recebe um identificador vindo de fora usa `findById()`
-puro. Toda busca por um registro específico (cliente, e futuramente
-WorkOrder, etc.) filtra também por `company_id` do usuário autenticado —
-sem isso, bastaria adivinhar ou enumerar um UUID para ler ou alterar dados
-de outra empresa.
+puro. Toda busca por um registro específico (cliente, WorkOrder) filtra
+também por `company_id` do usuário autenticado — sem isso, bastaria
+adivinhar ou enumerar um UUID para ler ou alterar dados de outra empresa.
+
+## State machine da WorkOrder isolada em sua própria classe
+
+`WorkOrderStatusTransitions` não depende de Spring, JPA ou qualquer
+framework — só do enum `WorkOrderStatus` e coleções puras do Java. Isso é
+deliberado: a regra "quais transições de status fazem sentido" é uma regra
+de negócio, não um detalhe de persistência, e mantê-la isolada permite
+testá-la com um `javac` simples, sem subir um contexto Spring inteiro. Os
+28 cenários de transição (caminho feliz completo, estados terminais, pulos
+de etapa, retrocessos) foram testados exatamente assim antes da entrega.
+
+`WorkOrderService.updateStatus` consulta essa classe antes de qualquer
+escrita no banco; uma transição inválida nunca chega a tocar o banco de
+dados, e retorna 409 com a transição exata que foi rejeitada.
+
+## RBAC aplicado via `@PreAuthorize`, não apenas documentado
+
+Desde a Sprint 1 existe uma matriz de permissões documentada (Negócio e
+Domínio, Notion) definindo, por exemplo, que apenas `ADMIN_EMPRESA` e
+`OPERADOR` podem criar WorkOrders. Até a Sprint 2, essa regra existia só
+como documentação — qualquer usuário autenticado, de qualquer role, podia
+chamar qualquer endpoint. A partir da Sprint 3, `@EnableMethodSecurity` foi
+habilitado no `SecurityConfig` e os endpoints de criação, transição de
+status e atribuição de responsável em WorkOrders usam
+`@PreAuthorize("hasAnyRole('ADMIN_EMPRESA', 'OPERADOR')")`. Uma tentativa de
+acesso sem o role exigido retorna 403 (`AccessDeniedException`, tratada
+explicitamente no `GlobalExceptionHandler` — sem esse handler, cairia no
+catch-all genérico e voltaria como 500, o que esconderia a causa real).
 

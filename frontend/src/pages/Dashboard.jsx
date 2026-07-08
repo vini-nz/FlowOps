@@ -22,6 +22,7 @@ export default function Dashboard() {
           <nav className="mt-1 flex gap-4 text-sm">
             <span className="font-medium text-flowops-700">Dashboard</span>
             <Link to="/clients" className="text-gray-500 hover:text-flowops-700">Clientes</Link>
+            <Link to="/work-orders" className="text-gray-500 hover:text-flowops-700">WorkOrders</Link>
           </nav>
         </div>
         <div className="flex items-center gap-4">

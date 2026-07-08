@@ -4,7 +4,9 @@ import com.flowops.entity.User;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 public interface UserRepository extends JpaRepository<User, Long> {
 
@@ -21,6 +23,16 @@ public interface UserRepository extends JpaRepository<User, Long> {
     // qualquer transacao.
     @EntityGraph(attributePaths = "company")
     Optional<User> findByEmailAndActiveTrue(String email);
+
+    // Usado para atribuir responsavel a uma WorkOrder: o UUID vem do corpo da
+    // requisicao (nunca confiavel por si so), entao o filtro por company_id
+    // garante que so e possivel atribuir usuarios da mesma empresa (D-06).
+    Optional<User> findByUuidAndCompanyIdAndActiveTrue(UUID uuid, Long companyId);
+
+    // Alimenta o dropdown de "responsavel" no frontend (Clientes nao precisa
+    // disso, mas WorkOrders sim).
+    List<User> findByCompanyIdAndActiveTrueOrderByNameAsc(Long companyId);
 }
+
 
 
