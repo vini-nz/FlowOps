@@ -43,6 +43,29 @@ const NEXT_STATUSES = {
   FINALIZADO: []
 }
 
+const STEP_STATUS_LABELS = {
+  PENDENTE: 'Pendente',
+  EM_ANDAMENTO: 'Em andamento',
+  CONCLUIDA: 'Concluída',
+  BLOQUEADA: 'Bloqueada'
+}
+
+const STEP_STATUS_COLORS = {
+  PENDENTE: 'bg-gray-100 text-gray-700',
+  EM_ANDAMENTO: 'bg-indigo-100 text-indigo-700',
+  CONCLUIDA: 'bg-emerald-100 text-emerald-700',
+  BLOQUEADA: 'bg-red-100 text-red-700'
+}
+
+// Espelha StepStatusTransitions.java (Sprint 4) - mesma ressalva do
+// NEXT_STATUSES acima: quem valida de verdade e o backend.
+const STEP_NEXT_STATUSES = {
+  PENDENTE: ['EM_ANDAMENTO', 'BLOQUEADA'],
+  EM_ANDAMENTO: ['CONCLUIDA', 'BLOQUEADA'],
+  BLOQUEADA: ['PENDENTE', 'EM_ANDAMENTO'],
+  CONCLUIDA: []
+}
+
 export default function WorkOrders() {
   const [workOrders, setWorkOrders] = useState([])
   const [clients, setClients] = useState([])
@@ -59,6 +82,11 @@ export default function WorkOrders() {
   const [showForm, setShowForm] = useState(false)
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState('')
+
+  const [expandedUuid, setExpandedUuid] = useState(null)
+  const [stepsByWorkOrder, setStepsByWorkOrder] = useState({})
+  const [stepsLoading, setStepsLoading] = useState(false)
+  const [notesDraft, setNotesDraft] = useState({})
 
   function loadWorkOrders() {
     setLoading(true)
@@ -133,6 +161,53 @@ export default function WorkOrders() {
       loadWorkOrders()
     } catch {
       setError('Não foi possível atribuir o responsável.')
+    }
+  }
+
+  function toggleSteps(workOrder) {
+    if (expandedUuid === workOrder.uuid) {
+      setExpandedUuid(null)
+      return
+    }
+    setExpandedUuid(workOrder.uuid)
+    if (!stepsByWorkOrder[workOrder.uuid]) {
+      loadSteps(workOrder.uuid)
+    }
+  }
+
+  function loadSteps(workOrderUuid) {
+    setStepsLoading(true)
+    api.get(`/work-orders/${workOrderUuid}/steps`)
+      .then((response) => {
+        setStepsByWorkOrder((prev) => ({ ...prev, [workOrderUuid]: response.data }))
+        const drafts = {}
+        response.data.forEach((step) => { drafts[step.uuid] = step.notes || '' })
+        setNotesDraft((prev) => ({ ...prev, ...drafts }))
+      })
+      .catch(() => setError('Não foi possível carregar as etapas.'))
+      .finally(() => setStepsLoading(false))
+  }
+
+  async function handleStepStatusChange(workOrderUuid, step, newStatus) {
+    try {
+      await api.patch(`/work-orders/${workOrderUuid}/steps/${step.uuid}/status`, { status: newStatus })
+      loadSteps(workOrderUuid)
+    } catch (err) {
+      setError(err.response?.data?.message || 'Não foi possível alterar o status da etapa.')
+    }
+  }
+
+  async function handleStepNotesSave(workOrderUuid, step) {
+    try {
+      // Self-transition (status inalterado) e permitida em StepStatusTransitions
+      // exatamente para este caso: registrar observacao sem avancar a etapa.
+      await api.patch(`/work-orders/${workOrderUuid}/steps/${step.uuid}/status`, {
+        status: step.status,
+        notes: notesDraft[step.uuid] ?? ''
+      })
+      loadSteps(workOrderUuid)
+    } catch (err) {
+      setError(err.response?.data?.message || 'Não foi possível salvar a observação.')
     }
   }
 
@@ -325,7 +400,74 @@ export default function WorkOrders() {
                     Avançar para {STATUS_LABELS[next]}
                   </button>
                 ))}
+
+                <button
+                  onClick={() => toggleSteps(wo)}
+                  className="rounded border border-gray-300 px-3 py-1 text-gray-600 hover:bg-gray-100"
+                >
+                  {expandedUuid === wo.uuid ? 'Ocultar etapas' : 'Ver etapas'}
+                </button>
               </div>
+
+              {expandedUuid === wo.uuid && (
+                <div className="mt-4 border-t border-gray-100 pt-3">
+                  {stepsLoading && !stepsByWorkOrder[wo.uuid] && (
+                    <p className="text-sm text-gray-400">Carregando etapas...</p>
+                  )}
+
+                  {stepsByWorkOrder[wo.uuid]?.length === 0 && (
+                    <p className="text-sm text-gray-400">
+                      Esta WorkOrder não tem um workflow configurado — nenhuma etapa foi gerada.
+                    </p>
+                  )}
+
+                  <div className="space-y-3">
+                    {stepsByWorkOrder[wo.uuid]?.map((step) => (
+                      <div key={step.uuid} className="rounded border border-gray-200 bg-gray-50 p-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium text-gray-800">
+                            {step.stepOrder}. {step.title}
+                          </span>
+                          <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STEP_STATUS_COLORS[step.status]}`}>
+                            {STEP_STATUS_LABELS[step.status]}
+                          </span>
+                        </div>
+
+                        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                          {STEP_NEXT_STATUSES[step.status]?.map((next) => (
+                            <button
+                              key={next}
+                              onClick={() => handleStepStatusChange(wo.uuid, step, next)}
+                              className="rounded border border-flowops-600 px-2 py-1 text-flowops-700 hover:bg-flowops-50"
+                            >
+                              {STEP_STATUS_LABELS[next]}
+                            </button>
+                          ))}
+                        </div>
+
+                        {step.status === 'CONCLUIDA' ? (
+                          step.notes && <p className="mt-2 text-xs text-gray-600">{step.notes}</p>
+                        ) : (
+                          <div className="mt-2 flex gap-2">
+                            <input
+                              value={notesDraft[step.uuid] ?? ''}
+                              onChange={(e) => setNotesDraft((prev) => ({ ...prev, [step.uuid]: e.target.value }))}
+                              placeholder="Observação da etapa..."
+                              className="flex-1 rounded border border-gray-300 px-2 py-1 text-xs focus:border-flowops-600 focus:outline-none"
+                            />
+                            <button
+                              onClick={() => handleStepNotesSave(wo.uuid, step)}
+                              className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-100"
+                            >
+                              Salvar
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </div>

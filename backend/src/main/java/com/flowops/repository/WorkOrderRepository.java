@@ -7,6 +7,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -24,7 +25,19 @@ public interface WorkOrderRepository extends JpaRepository<WorkOrder, Long> {
     Page<WorkOrder> findByCompanyIdAndStatusAndDeletedAtIsNull(
             Long companyId, WorkOrderStatus status, Pageable pageable);
 
+    // Usado pelo Dashboard (Sprint 4) para a lista de "WorkOrders recentes".
+    // EntityGraph necessario porque DashboardWorkOrderItem.from() acessa
+    // wo.getClient().getName() - sem isso e o mesmo LazyInitializationException
+    // documentado na Sprint 1, so que fora do filtro JWT desta vez.
+    @EntityGraph(attributePaths = "client")
     List<WorkOrder> findTop5ByCompanyIdAndDeletedAtIsNullOrderByCreatedAtDesc(Long companyId);
+
+    // Usado pelo Dashboard (Sprint 4) para "proximas entregas agendadas":
+    // WorkOrders com scheduledEnd a partir de hoje, que ainda nao chegaram a
+    // um estado terminal (FINALIZADO ja foi entregue, RECUSADO nunca sera).
+    @EntityGraph(attributePaths = "client")
+    List<WorkOrder> findTop5ByCompanyIdAndDeletedAtIsNullAndScheduledEndGreaterThanEqualAndStatusNotInOrderByScheduledEndAsc(
+            Long companyId, LocalDate from, List<WorkOrderStatus> excludedStatuses);
 
     long countByCompanyIdAndStatusAndDeletedAtIsNull(Long companyId, WorkOrderStatus status);
 

@@ -7,6 +7,8 @@ import com.flowops.entity.Company;
 import com.flowops.entity.DomainEvent;
 import com.flowops.entity.User;
 import com.flowops.entity.WorkOrder;
+import com.flowops.entity.WorkOrderStep;
+import com.flowops.entity.WorkflowTemplate;
 import com.flowops.enums.Priority;
 import com.flowops.enums.WorkOrderStatus;
 import com.flowops.exception.BusinessRuleException;
@@ -15,6 +17,9 @@ import com.flowops.repository.ClientRepository;
 import com.flowops.repository.DomainEventRepository;
 import com.flowops.repository.UserRepository;
 import com.flowops.repository.WorkOrderRepository;
+import com.flowops.repository.WorkOrderStepRepository;
+import com.flowops.repository.WorkflowStepRepository;
+import com.flowops.repository.WorkflowTemplateRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -31,6 +36,9 @@ public class WorkOrderService {
     private final ClientRepository clientRepository;
     private final UserRepository userRepository;
     private final DomainEventRepository domainEventRepository;
+    private final WorkflowTemplateRepository workflowTemplateRepository;
+    private final WorkflowStepRepository workflowStepRepository;
+    private final WorkOrderStepRepository workOrderStepRepository;
 
     @Transactional(readOnly = true)
     public Page<WorkOrderResponse> list(Long companyId, WorkOrderStatus status, Pageable pageable) {
@@ -65,12 +73,36 @@ public class WorkOrderService {
             workOrder.setAssignedTo(resolveAssignee(companyId, request.assignedToUuid()));
         }
 
+        // Workflow configuravel por empresa (Fluxo 3 - Planejamento, Negocio e
+        // Dominio no Notion): se a empresa tem um workflow_template default,
+        // a WorkOrder nasce ja vinculada a ele e suas etapas sao instanciadas
+        // a partir do molde (workflow_steps -> work_order_steps). Sem template
+        // default, a WorkOrder simplesmente nasce sem etapas - nao e um erro.
+        workflowTemplateRepository.findByCompanyIdAndIsDefaultTrue(companyId)
+                .ifPresent(workOrder::setWorkflowTemplate);
+
         WorkOrder saved = workOrderRepository.save(workOrder);
         recordEvent(saved, "WORKORDER_CRIADA", createdBy, null);
+
+        if (saved.getWorkflowTemplate() != null) {
+            instantiateSteps(saved);
+        }
 
         // Recarrega com o EntityGraph para que a resposta tenha client/assignedTo/
         // createdBy ja carregados, coerente com o resto do modulo.
         return get(companyId, saved.getUuid());
+    }
+
+    private void instantiateSteps(WorkOrder workOrder) {
+        workflowStepRepository.findByWorkflowTemplateIdOrderByStepOrderAsc(workOrder.getWorkflowTemplate().getId())
+                .forEach(workflowStep -> {
+                    WorkOrderStep step = new WorkOrderStep();
+                    step.setWorkOrder(workOrder);
+                    step.setWorkflowStep(workflowStep);
+                    step.setStepOrder(workflowStep.getStepOrder());
+                    step.setTitle(workflowStep.getTitle());
+                    workOrderStepRepository.save(step);
+                });
     }
 
     @Transactional

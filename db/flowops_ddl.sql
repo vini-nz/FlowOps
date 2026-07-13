@@ -190,6 +190,7 @@ CREATE TRIGGER trg_work_orders_updated_at
 
 CREATE TABLE work_order_steps (
     id                  BIGSERIAL PRIMARY KEY,
+    uuid                UUID NOT NULL UNIQUE DEFAULT gen_random_uuid(),
     work_order_id       BIGINT NOT NULL REFERENCES work_orders(id) ON DELETE CASCADE,
     workflow_step_id    BIGINT REFERENCES workflow_steps(id),
 

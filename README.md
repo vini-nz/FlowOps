@@ -18,8 +18,8 @@ técnico, usando tecnologias amplamente empregadas no mercado.
 - Controle de acesso por perfis (RBAC)
 - Gestão de clientes
 - Gestão de WorkOrders, com state machine de status e RBAC aplicado
-- Workflow baseado em etapas *(em desenvolvimento)*
-- Dashboard operacional
+- Workflow baseado em etapas, com state machine própria e observações
+- Dashboard operacional (contadores, WorkOrders recentes, próximas entregas)
 - Arquitetura REST, multi-tenant por empresa
 - Banco PostgreSQL com schema versionado
 - Ambiente containerizado com Docker
@@ -86,7 +86,7 @@ completo) é mantida separadamente no Notion do projeto.
 - [x] Sprint 1 — Fundação (auth, Docker, banco)
 - [x] Sprint 2 — Gestão de Clientes
 - [x] Sprint 3 — WorkOrders
-- [ ] Sprint 4 — Etapas e Dashboard operacional
+- [x] Sprint 4 — Etapas e Dashboard operacional
 - [ ] Sprint 5 — Deploy
 
 ---

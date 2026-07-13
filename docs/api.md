@@ -40,7 +40,27 @@ Authorization: Bearer <token>
 
 | Método | Rota | Descrição |
 |---|---|---|
-| `GET` | `/dashboard/summary` | Contadores de WorkOrders por status, isolados por empresa |
+| `GET` | `/dashboard/summary` | Contadores por status, WorkOrders recentes e próximas entregas, isolados por empresa |
+
+**Response:**
+```json
+{
+  "companyName": "...",
+  "totalWorkOrders": 5,
+  "byStatus": { "SOLICITACAO_RECEBIDA": 2, "EM_EXECUCAO": 1 },
+  "recentWorkOrders": [
+    { "uuid": "...", "title": "...", "clientName": "...", "status": "EM_EXECUCAO", "scheduledEnd": "2026-08-15" }
+  ],
+  "upcomingDeliveries": [
+    { "uuid": "...", "title": "...", "clientName": "...", "status": "APROVADO", "scheduledEnd": "2026-08-01" }
+  ]
+}
+```
+
+`recentWorkOrders` traz as 5 WorkOrders mais recentes (por `created_at`).
+`upcomingDeliveries` traz as 5 WorkOrders com `scheduledEnd` a partir de hoje
+que ainda não chegaram a um estado terminal (`FINALIZADO`/`RECUSADO`),
+ordenadas pela data de entrega mais próxima.
 
 ## Clientes
 
@@ -106,6 +126,31 @@ Uma transição inválida (ex: pular de `SOLICITACAO_RECEBIDA` direto para
 ```
 
 Envie `assignedToUuid: null` para remover o responsável atual.
+
+## Etapas
+
+| Método | Rota | Descrição |
+|---|---|---|
+| `GET` | `/work-orders/{workOrderUuid}/steps` | Lista as etapas de uma WorkOrder, ordenadas por `stepOrder` |
+| `PATCH` | `/work-orders/{workOrderUuid}/steps/{stepUuid}/status` | Avança o status da etapa e/ou registra observação — **restrito a `ADMIN_EMPRESA`, `OPERADOR` e `TECNICO`** |
+
+Uma WorkOrder só tem etapas se a empresa tiver um `workflow_template`
+marcado como padrão no momento em que ela foi criada — nesse caso a lista
+vem vazia (`[]`), não é um erro.
+
+**Request de atualização:**
+```json
+{ "status": "EM_ANDAMENTO", "notes": "Observação opcional" }
+```
+
+`status` é obrigatório; `notes` é opcional. Transições seguem
+`StepStatusTransitions` (`docs/architecture.md`): `PENDENTE → EM_ANDAMENTO →
+CONCLUIDA`, com `BLOQUEADA` acessível a partir de `PENDENTE`/`EM_ANDAMENTO` e
+reversível de volta. `CONCLUIDA` é terminal. Diferente da state machine da
+WorkOrder, enviar o mesmo `status` atual é uma transição válida — é assim que
+se registra uma observação sem avançar a etapa. Uma transição realmente
+inválida (ex: `PENDENTE` direto para `CONCLUIDA`, ou qualquer mudança a
+partir de `CONCLUIDA`) retorna `409`.
 
 ## Usuários
 

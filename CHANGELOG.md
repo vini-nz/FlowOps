@@ -3,6 +3,63 @@
 Todas as mudanças relevantes do projeto são registradas aqui.
 Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
+## [Sprint 4] — Etapas e Dashboard
+
+### Adicionado
+- CRUD de leitura/atualização de Etapas (`WorkOrderStepController`,
+  `WorkOrderStepService`, `StepStatusTransitions`): `GET /work-orders/{uuid}/steps`
+  lista as etapas de uma WorkOrder; `PATCH /work-orders/{uuid}/steps/{stepUuid}/status`
+  avança o status e/ou registra observação (CU-019, CU-020, CU-022 em Negócio
+  e Domínio)
+- `StepStatusTransitions`, state machine isolada da etapa (mesmo padrão de
+  `WorkOrderStatusTransitions` na Sprint 3): `PENDENTE → EM_ANDAMENTO →
+  CONCLUIDA`, com `BLOQUEADA` acessível a partir de `PENDENTE`/`EM_ANDAMENTO`
+  e reversível de volta. Diferença deliberada em relação à state machine da
+  WorkOrder: aqui a self-transition (`isValid(x, x)`) é permitida para todo
+  status não-terminal, porque o mesmo endpoint que avança o status também
+  registra a observação (CU-022) — sem a self-transition, seria impossível
+  salvar uma nota sem mudar o status. `CONCLUIDA` continua terminal mesmo
+  para si mesma. Testada isoladamente com `javac` puro: 21 cenários (caminho
+  feliz, bloqueio/desbloqueio, self-transition, terminal, pulos, retrocessos),
+  todos passando
+- Instanciação automática de Etapas na criação da WorkOrder: se a empresa tem
+  um `workflow_template` marcado como `is_default`, `WorkOrderService.create`
+  copia as `workflow_steps` do molde para `work_order_steps` da nova
+  WorkOrder (Fluxo 3 — Planejamento, Negócio e Domínio). Sem template
+  default, a WorkOrder nasce sem etapas — não é um erro
+- Dashboard estendido (`DashboardService`, novo — a lógica que vivia direto
+  no Controller desde a Sprint 1 agora segue o padrão Controller → Service →
+  Repository do resto do projeto): além dos contadores por status, o resumo
+  operacional agora traz as 5 WorkOrders mais recentes e as 5 próximas
+  entregas agendadas (`scheduledEnd >= hoje`, excluindo WorkOrders em estado
+  terminal)
+- Frontend: seção de Etapas expansível em cada card de WorkOrder (`WorkOrders.jsx`)
+  com badges de status, botões de avanço coerentes com `StepStatusTransitions`
+  e campo de observação; Dashboard (`Dashboard.jsx`) ganhou as listas de
+  WorkOrders recentes e próximas entregas
+
+### Corrigido
+- **`GET /auth/me` (e qualquer rota protegida) sem token retornava 403 em vez
+  do 401 documentado em `docs/api.md`.** Bug pré-existente desde a Sprint 1,
+  encontrado ao testar os requisitos das sprints anteriores durante esta
+  entrega. Causa raiz: `SecurityConfig` nunca registrava um
+  `AuthenticationEntryPoint` customizado; como login via formulário e HTTP
+  Basic estão desabilitados (autenticação é só JWT stateless), o único
+  entry point que o Spring Security registra por padrão nesse cenário é o
+  `Http403ForbiddenEntryPoint`. O comentário em `JwtAuthenticationFilter` já
+  assumia (incorretamente) que "o SecurityConfig vai bloquear com 401".
+  Corrigido com `RestAuthenticationEntryPoint`, registrado explicitamente via
+  `.exceptionHandling(ex -> ex.authenticationEntryPoint(...))`, devolvendo o
+  mesmo formato de erro do `GlobalExceptionHandler`
+
+### Alterado
+- `work_order_steps` ganhou coluna `uuid` (schema original da Etapa 2.2 não
+  previa isso). Adicionado para manter a mesma regra já aplicada a
+  `clients` e `work_orders`: id sequencial interno nunca é exposto na API
+  (ver `docs/architecture.md`) — sem isso, `WorkOrderStepResponse` teria que
+  escolher entre quebrar essa regra ou usar `step_order` como identificador
+  de rota, o que criaria uma exceção só para este módulo
+
 ## [Sprint 3] — WorkOrders
 
 ### Adicionado

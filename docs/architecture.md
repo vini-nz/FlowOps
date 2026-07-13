@@ -131,3 +131,78 @@ acesso sem o role exigido retorna 403 (`AccessDeniedException`, tratada
 explicitamente no `GlobalExceptionHandler` — sem esse handler, cairia no
 catch-all genérico e voltaria como 500, o que esconderia a causa real).
 
+## State machine da Etapa: self-transition deliberadamente permitida
+
+`StepStatusTransitions` (Sprint 4) segue o mesmo princípio de
+`WorkOrderStatusTransitions` — isolada de Spring/JPA, testável com `javac`
+puro (21 cenários) — mas com uma diferença consciente: `isValid(x, x)` é
+`true` para todo status não-terminal. A WorkOrder nunca permite isso
+(`isValid(SOLICITACAO_RECEBIDA, SOLICITACAO_RECEBIDA)` é `false`), mas a
+Etapa precisa, porque o único endpoint de escrita
+(`PATCH /work-orders/{uuid}/steps/{stepUuid}/status`) cobre tanto "avançar
+status" (CU-019/CU-020) quanto "registrar observação" (CU-022) — sem a
+self-transition, seria impossível salvar uma nota em uma etapa sem também
+mudar seu status. `CONCLUIDA` continua terminal mesmo para si mesma: uma
+etapa concluída não se "atualiza" mais.
+
+## Etapas instanciadas a partir do workflow padrão da empresa, na criação da WorkOrder
+
+`WorkOrderService.create` busca o `workflow_template` com `is_default = true`
+da empresa (`WorkflowTemplateRepository.findByCompanyIdAndIsDefaultTrue`) e,
+se existir, copia cada `workflow_step` do molde para uma `work_order_step` da
+WorkOrder recém-criada (Fluxo 3 — Planejamento, Negócio e Domínio no Notion).
+Se a empresa não tiver um template padrão configurado, a WorkOrder nasce sem
+etapas — estado válido, não um erro; `GET /work-orders/{uuid}/steps` apenas
+retorna uma lista vazia. Essa decisão mantém o Workflow "configurável por
+empresa" (conforme documentado) sem exigir que toda empresa tenha um
+workflow definido para usar o resto do sistema.
+
+## `work_order_steps` ganhou `uuid` na Sprint 4
+
+O DDL original da Etapa 2.2 não previa uma coluna `uuid` em
+`work_order_steps` — só o `id` sequencial. Isso quebraria a regra "IDs
+internos nunca são expostos na API" (ver acima) assim que a Sprint 4
+precisasse expor um identificador de etapa em `WorkOrderStepResponse` e nas
+rotas `PATCH .../steps/{stepUuid}/status`. A alternativa seria usar
+`step_order` (único por WorkOrder) como identificador de rota, mas isso
+criaria uma exceção só para este módulo, divergindo do padrão usado em todo
+o resto do sistema (`Client`, `WorkOrder`). Optou-se por adicionar a coluna
+`uuid UUID NOT NULL UNIQUE DEFAULT gen_random_uuid()`, consistente com as
+demais tabelas.
+
+## Dashboard migrado para `DashboardService` na Sprint 4
+
+Da Sprint 1 até a Sprint 3, a lógica do resumo operacional vivia direto no
+`DashboardController` — aceitável como "endpoint mínimo antecipado", prova
+de leitura protegida do banco. A partir da Sprint 4, com WorkOrders recentes
+e próximas entregas somando-se aos contadores por status, o Dashboard passou
+a seguir o mesmo padrão Controller → Service → Repository do resto do
+projeto (`DashboardService`, `@Transactional(readOnly = true)`).
+
+As duas novas consultas (`findTop5By...OrderByCreatedAtDesc` e
+`findTop5By...ScheduledEndGreaterThanEqualAndStatusNotInOrderByScheduledEndAsc`)
+usam `@EntityGraph(attributePaths = "client")`, pelo mesmo motivo documentado
+acima para `WorkOrderRepository`: `DashboardWorkOrderItem.from()` acessa
+`wo.getClient().getName()` fora de qualquer transação de Service explícita
+(o Controller delega para o Service, mas a serialização do DTO acontece
+depois que o método `@Transactional` já retornou) — sem o `EntityGraph`,
+seria o mesmo `LazyInitializationException` da Sprint 1, só que em um
+caminho de código novo.
+
+## Bug encontrado na Sprint 4: `401` vs `403` em rotas sem token
+
+Testando os requisitos das Sprints 1 a 3 durante esta entrega, `GET
+/auth/me` sem header `Authorization` retornava `403`, não o `401`
+documentado desde sempre em `docs/api.md`. Causa raiz: o projeto usa só JWT
+stateless — login por formulário e HTTP Basic nunca foram habilitados no
+`SecurityConfig`. Sem um `AuthenticationEntryPoint` customizado registrado,
+o Spring Security cai no fallback padrão para esse cenário,
+`Http403ForbiddenEntryPoint`. O comentário em `JwtAuthenticationFilter` ("o
+SecurityConfig vai bloquear com 401") assumia um comportamento que nunca foi
+configurado explicitamente.
+
+Corrigido com `RestAuthenticationEntryPoint`, registrado via
+`.exceptionHandling(ex -> ex.authenticationEntryPoint(...))` no
+`SecurityConfig`, devolvendo o mesmo formato de erro do
+`GlobalExceptionHandler` (`status`/`error`/`message`/`timestamp`) com `401`.
+
