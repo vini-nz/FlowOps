@@ -9,13 +9,16 @@ import java.util.UUID;
 
 public interface BudgetRepository extends JpaRepository<Budget, Long> {
 
-    // workOrder e createdBy sao LAZY - toda leitura usada para montar
-    // BudgetResponse carrega os dois na mesma query (padrao do projeto,
-    // ver docs/architecture.md), evitando LazyInitializationException.
-    @EntityGraph(attributePaths = {"workOrder", "createdBy"})
+    // workOrder, workOrder.client, company, createdBy e decidedBy sao LAZY -
+    // toda leitura usada para montar BudgetResponse ou o PDF (V2.2) carrega
+    // tudo na mesma query (padrao do projeto, ver docs/architecture.md),
+    // evitando LazyInitializationException. decidedBy costuma ser null
+    // (orcamento em RASCUNHO) - EntityGraph em associacao null nao gera
+    // erro, so nao ha nada para o JOIN trazer.
+    @EntityGraph(attributePaths = {"company", "workOrder", "workOrder.client", "createdBy", "decidedBy"})
     Optional<Budget> findByUuidAndCompanyId(UUID uuid, Long companyId);
 
-    @EntityGraph(attributePaths = {"workOrder", "createdBy"})
+    @EntityGraph(attributePaths = {"company", "workOrder", "workOrder.client", "createdBy", "decidedBy"})
     Optional<Budget> findByWorkOrderIdAndCompanyId(Long workOrderId, Long companyId);
 
     boolean existsByWorkOrderId(Long workOrderId);

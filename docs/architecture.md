@@ -240,3 +240,18 @@ preço de tabela atual. `catalog_item_id` é mantido (com `ON DELETE SET
 NULL`) só para rastreabilidade — "de qual item de catálogo isso veio" —
 nunca para recalcular valores.
 
+## Geração de PDF: OpenPDF em vez de HTML→PDF (V2.2)
+
+`BudgetPdfService` monta o documento diretamente com a API de baixo nível do
+OpenPDF (`Document`/`PdfPTable`), não com um template HTML renderizado (ex:
+Flying Saucer/Thymeleaf). Alternativa descartada: motor HTML→PDF é mais
+confortável para layouts ricos, mas traz uma dependência a mais (parser
+HTML/CSS) para um documento de uma página com cabeçalho, uma tabela e um
+total — sem justificativa de complexidade para o V2.2. Fica registrado aqui
+porque, se um V3 exigir modelos de PDF mais elaborados (ex: com logo da
+empresa, múltiplas páginas, cabeçalho/rodapé repetido), vale reavaliar para
+um motor baseado em template em vez de continuar montando o documento
+imperativamente. Biblioteca escolhida (OpenPDF, LGPL/MPL) em vez de iText
+por licenciamento — iText 5+/7 é AGPL, incompatível com uso comercial sem
+licença paga.
+

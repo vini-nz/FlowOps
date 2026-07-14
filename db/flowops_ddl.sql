@@ -260,6 +260,11 @@ CREATE TABLE budgets (
     total_amount    NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (total_amount >= 0),
 
     created_by_id   BIGINT NOT NULL REFERENCES users(id),
+    -- Preenchidos junto da decisao (APROVADO/RECUSADO) em BudgetService.updateStatus
+    -- (V2.2) - "quem decidiu e quando", separado de updated_at porque updated_at
+    -- tambem muda a cada item adicionado/removido, sem relacao com a decisao.
+    decided_by_id   BIGINT REFERENCES users(id),
+    decided_at      TIMESTAMPTZ,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );

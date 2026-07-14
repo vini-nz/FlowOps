@@ -76,6 +76,13 @@
             <optional>true</optional>
         </dependency>
 
+        <!-- Geracao de PDF do orcamento (V2.2) -->
+        <dependency>
+            <groupId>com.github.librepdf</groupId>
+            <artifactId>openpdf</artifactId>
+            <version>1.3.30</version>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-devtools</artifactId>

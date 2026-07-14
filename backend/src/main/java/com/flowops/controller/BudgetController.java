@@ -7,7 +7,11 @@ import com.flowops.entity.User;
 import com.flowops.service.BudgetService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
@@ -63,5 +67,23 @@ public class BudgetController {
             @PathVariable UUID workOrderUuid,
             @Valid @RequestBody BudgetStatusUpdateRequest request) {
         return budgetService.updateStatus(user.getCompany().getId(), workOrderUuid, request.status(), user);
+    }
+
+    // Critério de aceitação (Backlog Detalhado, item 2): "Download do PDF
+    // pelo Operador/Admin Empresa" - mesma restrição das demais escritas do
+    // módulo, já que o PDF expõe o valor comercial completo do orçamento.
+    @PreAuthorize("hasAnyRole('ADMIN_EMPRESA', 'OPERADOR')")
+    @GetMapping("/pdf")
+    public ResponseEntity<byte[]> downloadPdf(@AuthenticationPrincipal User user, @PathVariable UUID workOrderUuid) {
+        byte[] pdf = budgetService.generatePdf(user.getCompany().getId(), workOrderUuid);
+
+        ContentDisposition disposition = ContentDisposition.attachment()
+                .filename("orcamento-%s.pdf".formatted(workOrderUuid))
+                .build();
+
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_PDF)
+                .header(HttpHeaders.CONTENT_DISPOSITION, disposition.toString())
+                .body(pdf);
     }
 }

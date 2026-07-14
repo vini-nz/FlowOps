@@ -48,6 +48,13 @@ public class Budget {
     @JoinColumn(name = "created_by_id", nullable = false)
     private User createdBy;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "decided_by_id")
+    private User decidedBy;
+
+    @Column(name = "decided_at")
+    private OffsetDateTime decidedAt;
+
     @Column(name = "created_at", nullable = false, insertable = false, updatable = false)
     private OffsetDateTime createdAt;
 

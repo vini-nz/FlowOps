@@ -182,6 +182,7 @@ ser decidido enquanto o orçamento está em `RASCUNHO`.
 | `POST` | `/work-orders/{workOrderUuid}/budget/items` | Adiciona um item, recalcula o total — **restrito a `ADMIN_EMPRESA` e `OPERADOR`** |
 | `DELETE` | `/work-orders/{workOrderUuid}/budget/items/{itemUuid}` | Remove um item, recalcula o total — **restrito a `ADMIN_EMPRESA` e `OPERADOR`** |
 | `PATCH` | `/work-orders/{workOrderUuid}/budget/status` | Registra aprovação/recusa (interno, pelo Operador) e avança a WorkOrder — **restrito a `ADMIN_EMPRESA` e `OPERADOR`** |
+| `GET` | `/work-orders/{workOrderUuid}/budget/pdf` | Baixa o PDF do orçamento (`application/pdf`, `Content-Disposition: attachment`) — **restrito a `ADMIN_EMPRESA` e `OPERADOR`** |
 
 **Request de item (do catálogo):**
 ```json
@@ -203,7 +204,8 @@ Sem `catalogItemUuid`, `description` e `unitPrice` passam a ser obrigatórios
 ```
 Aceita `APROVADO` ou `RECUSADO` (`RASCUNHO` não é um valor válido de
 destino). Exige ao menos um item e o orçamento ainda em `RASCUNHO` — um
-orçamento já decidido, ou sem itens, retorna `409`.
+orçamento já decidido, ou sem itens, retorna `409`. Preenche `decidedByName`
+e `decidedAt` na resposta do orçamento (ambos `null` enquanto `RASCUNHO`).
 
 ## Usuários
 

@@ -14,6 +14,8 @@ public record BudgetResponse(
         BudgetStatus status,
         BigDecimal totalAmount,
         String createdByName,
+        String decidedByName,
+        OffsetDateTime decidedAt,
         OffsetDateTime createdAt,
         OffsetDateTime updatedAt,
         List<BudgetItemResponse> items
@@ -25,6 +27,8 @@ public record BudgetResponse(
                 budget.getStatus(),
                 budget.getTotalAmount(),
                 budget.getCreatedBy().getName(),
+                budget.getDecidedBy() != null ? budget.getDecidedBy().getName() : null,
+                budget.getDecidedAt(),
                 budget.getCreatedAt(),
                 budget.getUpdatedAt(),
                 items

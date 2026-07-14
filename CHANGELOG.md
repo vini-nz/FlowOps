@@ -3,6 +3,32 @@
 Todas as mudanças relevantes do projeto são registradas aqui.
 Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
+## [V2.2] — PDF e Aprovação de Orçamento
+
+### Adicionado
+- Geração de PDF do orçamento (`BudgetPdfService`, biblioteca OpenPDF):
+  `GET /work-orders/{uuid}/budget/pdf` retorna o documento com cabeçalho da
+  empresa, cliente, WorkOrder, status, itens e total — restrito a
+  `ADMIN_EMPRESA`/`OPERADOR`, mesmo critério das demais escritas do módulo
+- `budgets` ganhou `decided_by_id`/`decided_at`, preenchidos em
+  `BudgetService.updateStatus`: fecha o critério de aceitação "registrar
+  aprovação/recusa com data/hora e responsável" que a V2.1 só cobria
+  parcialmente (o evento ficava em `domain_events`, mas não no próprio
+  orçamento) — agora aparece direto em `BudgetResponse` e no PDF
+- Frontend: botão "Baixar PDF" no painel de orçamento (`WorkOrders.jsx`),
+  download via blob; linha "Aprovado/Recusado por X em DD/MM/AAAA" exibida
+  quando o orçamento já foi decidido
+
+### Testado
+- `BudgetServiceTest` ganhou 2 cenários novos (`generatePdf` delegando para
+  `BudgetPdfService` com os dados corretos; isolamento multi-tenant do
+  endpoint de PDF) e a asserção de `decidedBy`/`decidedAt` no teste de
+  aprovação já existente — 11 cenários no total
+- PDF real gerado e baixado de ponta a ponta (backend via Docker/Java 21,
+  requisição autenticada, arquivo validado com assinatura `%PDF-1.5` e
+  conteúdo conferido visualmente) e pela interface (clique em "Baixar PDF",
+  sem erro de console)
+
 ## [V2.1] — Orçamentos e Catálogo
 
 Primeira entrega da V2 (Núcleo Comercial e Fundação Técnica), seguindo o

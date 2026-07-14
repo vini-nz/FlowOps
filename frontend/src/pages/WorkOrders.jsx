@@ -84,6 +84,11 @@ function formatCurrency(value) {
   return Number(value).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 }
 
+function formatDateTime(isoDateTime) {
+  if (!isoDateTime) return ''
+  return new Date(isoDateTime).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })
+}
+
 export default function WorkOrders() {
   const [workOrders, setWorkOrders] = useState([])
   const [clients, setClients] = useState([])
@@ -317,6 +322,23 @@ export default function WorkOrders() {
       loadWorkOrders()
     } catch (err) {
       setBudgetActionError(err.response?.data?.message || 'Não foi possível registrar a decisão.')
+    }
+  }
+
+  async function handleDownloadPdf(workOrderUuid) {
+    setBudgetActionError('')
+    try {
+      const response = await api.get(`/work-orders/${workOrderUuid}/budget/pdf`, { responseType: 'blob' })
+      const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }))
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `orcamento-${workOrderUuid}.pdf`
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(url)
+    } catch {
+      setBudgetActionError('Não foi possível baixar o PDF do orçamento.')
     }
   }
 
@@ -565,13 +587,27 @@ export default function WorkOrders() {
                     return (
                       <div>
                         <div className="mb-3 flex items-center justify-between">
-                          <span className={`rounded-full px-3 py-1 text-xs font-medium ${BUDGET_STATUS_COLORS[budget.status]}`}>
-                            {BUDGET_STATUS_LABELS[budget.status]}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className={`rounded-full px-3 py-1 text-xs font-medium ${BUDGET_STATUS_COLORS[budget.status]}`}>
+                              {BUDGET_STATUS_LABELS[budget.status]}
+                            </span>
+                            <button
+                              onClick={() => handleDownloadPdf(wo.uuid)}
+                              className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-100"
+                            >
+                              Baixar PDF
+                            </button>
+                          </div>
                           <span className="text-sm font-medium text-gray-900">
                             Total: {formatCurrency(budget.totalAmount)}
                           </span>
                         </div>
+
+                        {!editable && budget.decidedByName && (
+                          <p className="mb-3 text-xs text-gray-500">
+                            {budget.status === 'APROVADO' ? 'Aprovado' : 'Recusado'} por {budget.decidedByName} em {formatDateTime(budget.decidedAt)}
+                          </p>
+                        )}
 
                         <div className="space-y-2">
                           {budget.items.length === 0 && (

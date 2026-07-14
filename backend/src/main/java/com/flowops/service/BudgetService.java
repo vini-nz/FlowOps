@@ -25,6 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -45,12 +46,24 @@ public class BudgetService {
     private final WorkOrderRepository workOrderRepository;
     private final DomainEventRepository domainEventRepository;
     private final WorkOrderService workOrderService;
+    private final BudgetPdfService budgetPdfService;
 
     @Transactional(readOnly = true)
     public BudgetResponse get(Long companyId, UUID workOrderUuid) {
         WorkOrder workOrder = findWorkOrderOrThrow(companyId, workOrderUuid);
         Budget budget = findBudgetOrThrow(companyId, workOrder.getId());
         return toResponse(budget);
+    }
+
+    // Isolamento multi-tenant garantido pelo mesmo caminho de get():
+    // findBudgetOrThrow so encontra orcamento cujo company_id bate com o do
+    // usuario autenticado - PDF de outra empresa nunca chega a ser gerado.
+    @Transactional(readOnly = true)
+    public byte[] generatePdf(Long companyId, UUID workOrderUuid) {
+        WorkOrder workOrder = findWorkOrderOrThrow(companyId, workOrderUuid);
+        Budget budget = findBudgetOrThrow(companyId, workOrder.getId());
+        List<BudgetItem> items = budgetItemRepository.findByBudgetIdOrderByIdAsc(budget.getId());
+        return budgetPdfService.generate(budget, items);
     }
 
     // Criar orcamento move a WorkOrder de SOLICITACAO_RECEBIDA para
@@ -159,6 +172,8 @@ public class BudgetService {
         workOrderService.updateStatus(companyId, workOrderUuid, targetWorkOrderStatus, actor);
 
         budget.setStatus(newStatus);
+        budget.setDecidedBy(actor);
+        budget.setDecidedAt(OffsetDateTime.now());
         budgetRepository.save(budget);
 
         recordEvent(workOrder, "ORCAMENTO_" + newStatus, actor, null);
