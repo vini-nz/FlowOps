@@ -66,6 +66,24 @@ const STEP_NEXT_STATUSES = {
   CONCLUIDA: []
 }
 
+const BUDGET_STATUS_LABELS = {
+  RASCUNHO: 'Rascunho',
+  APROVADO: 'Aprovado',
+  RECUSADO: 'Recusado'
+}
+
+const BUDGET_STATUS_COLORS = {
+  RASCUNHO: 'bg-gray-100 text-gray-700',
+  APROVADO: 'bg-emerald-100 text-emerald-700',
+  RECUSADO: 'bg-red-100 text-red-700'
+}
+
+const emptyItemDraft = { catalogItemUuid: '', description: '', quantity: '1', unitPrice: '' }
+
+function formatCurrency(value) {
+  return Number(value).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+}
+
 export default function WorkOrders() {
   const [workOrders, setWorkOrders] = useState([])
   const [clients, setClients] = useState([])
@@ -87,6 +105,13 @@ export default function WorkOrders() {
   const [stepsByWorkOrder, setStepsByWorkOrder] = useState({})
   const [stepsLoading, setStepsLoading] = useState(false)
   const [notesDraft, setNotesDraft] = useState({})
+
+  const [catalogItems, setCatalogItems] = useState([])
+  const [budgetExpandedUuid, setBudgetExpandedUuid] = useState(null)
+  const [budgetsByWorkOrder, setBudgetsByWorkOrder] = useState({})
+  const [budgetLoading, setBudgetLoading] = useState(false)
+  const [itemDraft, setItemDraft] = useState(emptyItemDraft)
+  const [budgetActionError, setBudgetActionError] = useState('')
 
   function loadWorkOrders() {
     setLoading(true)
@@ -115,6 +140,10 @@ export default function WorkOrders() {
 
     api.get('/users')
       .then((response) => setUsers(response.data))
+      .catch(() => {})
+
+    api.get('/catalog-items', { params: { size: 200, sort: 'name,asc' } })
+      .then((response) => setCatalogItems(response.data.content))
       .catch(() => {})
   }, [])
 
@@ -211,6 +240,96 @@ export default function WorkOrders() {
     }
   }
 
+  function toggleBudget(workOrder) {
+    if (budgetExpandedUuid === workOrder.uuid) {
+      setBudgetExpandedUuid(null)
+      return
+    }
+    setBudgetExpandedUuid(workOrder.uuid)
+    setBudgetActionError('')
+    setItemDraft(emptyItemDraft)
+    if (!(workOrder.uuid in budgetsByWorkOrder)) {
+      loadBudget(workOrder.uuid)
+    }
+  }
+
+  function loadBudget(workOrderUuid) {
+    setBudgetLoading(true)
+    api.get(`/work-orders/${workOrderUuid}/budget`)
+      .then((response) => {
+        setBudgetsByWorkOrder((prev) => ({ ...prev, [workOrderUuid]: response.data }))
+      })
+      .catch((err) => {
+        // 404 significa "ainda nao existe orcamento para esta WorkOrder" -
+        // nao e um erro, e o estado normal antes do primeiro POST.
+        if (err.response?.status === 404) {
+          setBudgetsByWorkOrder((prev) => ({ ...prev, [workOrderUuid]: null }))
+        } else {
+          setError('Não foi possível carregar o orçamento.')
+        }
+      })
+      .finally(() => setBudgetLoading(false))
+  }
+
+  async function handleCreateBudget(workOrderUuid) {
+    setBudgetActionError('')
+    try {
+      await api.post(`/work-orders/${workOrderUuid}/budget`)
+      loadBudget(workOrderUuid)
+      loadWorkOrders()
+    } catch (err) {
+      setBudgetActionError(err.response?.data?.message || 'Não foi possível criar o orçamento.')
+    }
+  }
+
+  async function handleAddItem(workOrderUuid) {
+    setBudgetActionError('')
+    try {
+      const payload = {
+        catalogItemUuid: itemDraft.catalogItemUuid || null,
+        description: itemDraft.description || null,
+        quantity: Number(itemDraft.quantity),
+        unitPrice: itemDraft.unitPrice !== '' ? Number(itemDraft.unitPrice) : null
+      }
+      await api.post(`/work-orders/${workOrderUuid}/budget/items`, payload)
+      setItemDraft(emptyItemDraft)
+      loadBudget(workOrderUuid)
+    } catch (err) {
+      setBudgetActionError(err.response?.data?.message || 'Não foi possível adicionar o item.')
+    }
+  }
+
+  async function handleRemoveItem(workOrderUuid, itemUuid) {
+    setBudgetActionError('')
+    try {
+      await api.delete(`/work-orders/${workOrderUuid}/budget/items/${itemUuid}`)
+      loadBudget(workOrderUuid)
+    } catch (err) {
+      setBudgetActionError(err.response?.data?.message || 'Não foi possível remover o item.')
+    }
+  }
+
+  async function handleBudgetDecision(workOrderUuid, status) {
+    setBudgetActionError('')
+    try {
+      await api.patch(`/work-orders/${workOrderUuid}/budget/status`, { status })
+      loadBudget(workOrderUuid)
+      loadWorkOrders()
+    } catch (err) {
+      setBudgetActionError(err.response?.data?.message || 'Não foi possível registrar a decisão.')
+    }
+  }
+
+  function selectCatalogItem(catalogItemUuid) {
+    const catalogItem = catalogItems.find((c) => c.uuid === catalogItemUuid)
+    setItemDraft((prev) => ({
+      ...prev,
+      catalogItemUuid,
+      description: catalogItem ? catalogItem.name : prev.description,
+      unitPrice: catalogItem ? String(catalogItem.unitPrice) : prev.unitPrice
+    }))
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="flex items-center justify-between border-b border-gray-200 bg-white px-6 py-4">
@@ -220,6 +339,7 @@ export default function WorkOrders() {
             <Link to="/dashboard" className="text-gray-500 hover:text-flowops-700">Dashboard</Link>
             <Link to="/clients" className="text-gray-500 hover:text-flowops-700">Clientes</Link>
             <span className="font-medium text-flowops-700">WorkOrders</span>
+            <Link to="/catalog" className="text-gray-500 hover:text-flowops-700">Catálogo</Link>
           </nav>
         </div>
         <button
@@ -407,7 +527,151 @@ export default function WorkOrders() {
                 >
                   {expandedUuid === wo.uuid ? 'Ocultar etapas' : 'Ver etapas'}
                 </button>
+
+                <button
+                  onClick={() => toggleBudget(wo)}
+                  className="rounded border border-gray-300 px-3 py-1 text-gray-600 hover:bg-gray-100"
+                >
+                  {budgetExpandedUuid === wo.uuid ? 'Ocultar orçamento' : 'Ver orçamento'}
+                </button>
               </div>
+
+              {budgetExpandedUuid === wo.uuid && (
+                <div className="mt-4 border-t border-gray-100 pt-3">
+                  {budgetLoading && !(wo.uuid in budgetsByWorkOrder) && (
+                    <p className="text-sm text-gray-400">Carregando orçamento...</p>
+                  )}
+
+                  {budgetActionError && (
+                    <p className="mb-3 rounded bg-red-50 px-3 py-2 text-sm text-red-700">{budgetActionError}</p>
+                  )}
+
+                  {!budgetLoading && wo.uuid in budgetsByWorkOrder && budgetsByWorkOrder[wo.uuid] === null && (
+                    wo.status === 'SOLICITACAO_RECEBIDA' ? (
+                      <button
+                        onClick={() => handleCreateBudget(wo.uuid)}
+                        className="rounded bg-flowops-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-flowops-700"
+                      >
+                        Criar orçamento
+                      </button>
+                    ) : (
+                      <p className="text-sm text-gray-400">Esta WorkOrder não tem orçamento.</p>
+                    )
+                  )}
+
+                  {budgetsByWorkOrder[wo.uuid] && (() => {
+                    const budget = budgetsByWorkOrder[wo.uuid]
+                    const editable = budget.status === 'RASCUNHO'
+                    return (
+                      <div>
+                        <div className="mb-3 flex items-center justify-between">
+                          <span className={`rounded-full px-3 py-1 text-xs font-medium ${BUDGET_STATUS_COLORS[budget.status]}`}>
+                            {BUDGET_STATUS_LABELS[budget.status]}
+                          </span>
+                          <span className="text-sm font-medium text-gray-900">
+                            Total: {formatCurrency(budget.totalAmount)}
+                          </span>
+                        </div>
+
+                        <div className="space-y-2">
+                          {budget.items.length === 0 && (
+                            <p className="text-sm text-gray-400">Nenhum item adicionado ainda.</p>
+                          )}
+                          {budget.items.map((item) => (
+                            <div key={item.uuid} className="flex items-center justify-between rounded border border-gray-200 bg-gray-50 px-3 py-2 text-sm">
+                              <span className="text-gray-700">
+                                {item.description} — {item.quantity} x {formatCurrency(item.unitPrice)}
+                              </span>
+                              <div className="flex items-center gap-3">
+                                <span className="font-medium text-gray-900">{formatCurrency(item.subtotal)}</span>
+                                {editable && (
+                                  <button
+                                    onClick={() => handleRemoveItem(wo.uuid, item.uuid)}
+                                    className="text-red-600 hover:underline"
+                                  >
+                                    Remover
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
+                        {editable && (
+                          <div className="mt-3 flex flex-wrap items-end gap-2 rounded border border-gray-200 bg-white p-3">
+                            <div>
+                              <label className="mb-1 block text-xs text-gray-600">Item do catálogo</label>
+                              <select
+                                value={itemDraft.catalogItemUuid}
+                                onChange={(e) => selectCatalogItem(e.target.value)}
+                                className="rounded border border-gray-300 px-2 py-1 text-sm focus:border-flowops-600 focus:outline-none"
+                              >
+                                <option value="">Item avulso</option>
+                                {catalogItems.map((c) => (
+                                  <option key={c.uuid} value={c.uuid}>{c.name}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <label className="mb-1 block text-xs text-gray-600">Descrição</label>
+                              <input
+                                value={itemDraft.description}
+                                onChange={(e) => setItemDraft({ ...itemDraft, description: e.target.value })}
+                                className="w-40 rounded border border-gray-300 px-2 py-1 text-sm focus:border-flowops-600 focus:outline-none"
+                              />
+                            </div>
+                            <div>
+                              <label className="mb-1 block text-xs text-gray-600">Qtd.</label>
+                              <input
+                                type="number"
+                                min="0.01"
+                                step="0.01"
+                                value={itemDraft.quantity}
+                                onChange={(e) => setItemDraft({ ...itemDraft, quantity: e.target.value })}
+                                className="w-20 rounded border border-gray-300 px-2 py-1 text-sm focus:border-flowops-600 focus:outline-none"
+                              />
+                            </div>
+                            <div>
+                              <label className="mb-1 block text-xs text-gray-600">Valor unit. (R$)</label>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={itemDraft.unitPrice}
+                                onChange={(e) => setItemDraft({ ...itemDraft, unitPrice: e.target.value })}
+                                className="w-28 rounded border border-gray-300 px-2 py-1 text-sm focus:border-flowops-600 focus:outline-none"
+                              />
+                            </div>
+                            <button
+                              onClick={() => handleAddItem(wo.uuid)}
+                              className="rounded border border-flowops-600 px-3 py-1.5 text-sm text-flowops-700 hover:bg-flowops-50"
+                            >
+                              Adicionar item
+                            </button>
+                          </div>
+                        )}
+
+                        {editable && (
+                          <div className="mt-3 flex gap-2">
+                            <button
+                              onClick={() => handleBudgetDecision(wo.uuid, 'APROVADO')}
+                              className="rounded bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700"
+                            >
+                              Registrar aprovação
+                            </button>
+                            <button
+                              onClick={() => handleBudgetDecision(wo.uuid, 'RECUSADO')}
+                              className="rounded bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700"
+                            >
+                              Registrar recusa
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })()}
+                </div>
+              )}
 
               {expandedUuid === wo.uuid && (
                 <div className="mt-4 border-t border-gray-100 pt-3">

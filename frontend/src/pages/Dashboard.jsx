@@ -40,6 +40,7 @@ export default function Dashboard() {
             <span className="font-medium text-flowops-700">Dashboard</span>
             <Link to="/clients" className="text-gray-500 hover:text-flowops-700">Clientes</Link>
             <Link to="/work-orders" className="text-gray-500 hover:text-flowops-700">WorkOrders</Link>
+            <Link to="/catalog" className="text-gray-500 hover:text-flowops-700">Catálogo</Link>
           </nav>
         </div>
         <div className="flex items-center gap-4">

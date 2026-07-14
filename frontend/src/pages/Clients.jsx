@@ -109,6 +109,7 @@ export default function Clients() {
             <Link to="/dashboard" className="text-gray-500 hover:text-flowops-700">Dashboard</Link>
             <span className="font-medium text-flowops-700">Clientes</span>
             <Link to="/work-orders" className="text-gray-500 hover:text-flowops-700">WorkOrders</Link>
+            <Link to="/catalog" className="text-gray-500 hover:text-flowops-700">Catálogo</Link>
           </nav>
         </div>
         <button
