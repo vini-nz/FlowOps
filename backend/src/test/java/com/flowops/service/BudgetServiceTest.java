@@ -57,6 +57,8 @@ class BudgetServiceTest {
     private DomainEventRepository domainEventRepository;
     @Mock
     private WorkOrderService workOrderService;
+    @Mock
+    private BudgetPdfService budgetPdfService;
 
     private BudgetService budgetService;
 
@@ -67,7 +69,7 @@ class BudgetServiceTest {
     void setUp() {
         budgetService = new BudgetService(
                 budgetRepository, budgetItemRepository, catalogItemRepository,
-                workOrderRepository, domainEventRepository, workOrderService);
+                workOrderRepository, domainEventRepository, workOrderService, budgetPdfService);
         actor = new User();
         actor.setId(9L);
     }
@@ -226,6 +228,9 @@ class BudgetServiceTest {
         verify(workOrderService).updateStatus(COMPANY_ID, wo.getUuid(), WorkOrderStatus.APROVADO, actor);
         verify(workOrderService, times(2)).updateStatus(eq(COMPANY_ID), eq(wo.getUuid()), any(), eq(actor));
         assertThat(b.getStatus()).isEqualTo(BudgetStatus.APROVADO);
+        // Criterio de aceitacao V2.2: "registrar aprovacao/recusa com data/hora e responsavel"
+        assertThat(b.getDecidedBy()).isEqualTo(actor);
+        assertThat(b.getDecidedAt()).isNotNull();
     }
 
     @Test
@@ -241,6 +246,34 @@ class BudgetServiceTest {
                 .isInstanceOf(BusinessRuleException.class);
 
         verify(workOrderService, never()).updateStatus(any(), any(), any(), any());
+    }
+
+    @Test
+    void generatePdf_delegatesToBudgetPdfServiceWithBudgetAndItems() {
+        WorkOrder wo = workOrder(WorkOrderStatus.APROVADO);
+        Budget b = budget(wo, BudgetStatus.APROVADO, new BigDecimal("300.00"));
+        List<BudgetItem> items = List.of(itemWithSubtotal(new BigDecimal("300.00")));
+        byte[] expectedPdf = {1, 2, 3};
+
+        when(workOrderRepository.findByUuidAndCompanyIdAndDeletedAtIsNull(wo.getUuid(), COMPANY_ID))
+                .thenReturn(Optional.of(wo));
+        when(budgetRepository.findByWorkOrderIdAndCompanyId(wo.getId(), COMPANY_ID)).thenReturn(Optional.of(b));
+        when(budgetItemRepository.findByBudgetIdOrderByIdAsc(b.getId())).thenReturn(items);
+        when(budgetPdfService.generate(b, items)).thenReturn(expectedPdf);
+
+        byte[] result = budgetService.generatePdf(COMPANY_ID, wo.getUuid());
+
+        assertThat(result).isEqualTo(expectedPdf);
+    }
+
+    @Test
+    void generatePdf_whenBudgetBelongsToAnotherCompany_throwsResourceNotFound() {
+        UUID workOrderUuid = UUID.randomUUID();
+        when(workOrderRepository.findByUuidAndCompanyIdAndDeletedAtIsNull(workOrderUuid, COMPANY_ID))
+                .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> budgetService.generatePdf(COMPANY_ID, workOrderUuid))
+                .isInstanceOf(com.flowops.exception.ResourceNotFoundException.class);
     }
 
     private BudgetItem itemWithSubtotal(BigDecimal subtotal) {
