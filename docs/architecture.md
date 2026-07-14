@@ -206,3 +206,37 @@ Corrigido com `RestAuthenticationEntryPoint`, registrado via
 `SecurityConfig`, devolvendo o mesmo formato de erro do
 `GlobalExceptionHandler` (`status`/`error`/`message`/`timestamp`) com `401`.
 
+## Orçamento reaproveita `WorkOrderStatusTransitions` em vez de duplicar a state machine (V2.1)
+
+`BudgetService` não atribui `WorkOrder.status` diretamente em nenhum ponto.
+Toda transição (criação do orçamento move `SOLICITACAO_RECEBIDA →
+ORCAMENTO_GERADO`; decisão move `ORCAMENTO_GERADO → AGUARDANDO_APROVACAO →
+APROVADO|RECUSADO`) passa por `WorkOrderService.updateStatus`, o mesmo
+método já usado pelo `WorkOrderController`. A alternativa seria o
+`BudgetService` validar e persistir o novo status por conta própria — mais
+rápido de escrever, mas criaria uma segunda cópia da validação de
+`WorkOrderStatusTransitions` (D-02) fora do lugar onde ela já é testada e
+mantida, com risco real de as duas divergirem com o tempo. O custo aceito é
+uma query extra por transição (o `WorkOrder` é recarregado dentro de
+`updateStatus`), irrelevante no volume atual.
+
+Pelo mesmo motivo, `BudgetService` grava seus próprios eventos
+(`ORCAMENTO_CRIADO`, `ITEM_ADICIONADO`, `ITEM_REMOVIDO`,
+`ORCAMENTO_APROVADO`/`ORCAMENTO_RECUSADO`) com um `recordEvent` privado
+duplicado do mesmo método em `WorkOrderService`, em vez de extrair um
+serviço de eventos compartilhado agora — essa extração pertence ao item
+"Padronização Arquitetural" do Épico Dívida Técnica, que ainda não rodou;
+duplicar um helper de 10 linhas é mais barato que introduzir uma abstração
+nova no meio de uma feature que não é sobre isso.
+
+## Itens de orçamento gravam snapshot, não referência viva ao catálogo
+
+`BudgetItem.description`/`unitPrice` são copiados do `CatalogItem` no
+momento da adição (`BudgetService.addItem`), não recalculados a partir de
+`catalog_item_id` na leitura. Editar o preço de um item de catálogo depois
+não deve alterar orçamentos já criados — é o mesmo raciocínio de qualquer
+sistema de nota fiscal/pedido: o valor cobrado é o que foi acordado, não o
+preço de tabela atual. `catalog_item_id` é mantido (com `ON DELETE SET
+NULL`) só para rastreabilidade — "de qual item de catálogo isso veio" —
+nunca para recalcular valores.
+

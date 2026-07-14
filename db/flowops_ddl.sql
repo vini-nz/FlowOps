@@ -218,6 +218,82 @@ CREATE TRIGGER trg_work_order_steps_updated_at
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- ============================================================================
+-- DOMÍNIO: COMERCIAL (Catálogo e Orçamentos) — V2.1
+-- ============================================================================
+
+CREATE TABLE catalog_items (
+    id            BIGSERIAL PRIMARY KEY,
+    uuid          UUID NOT NULL UNIQUE DEFAULT gen_random_uuid(),
+    company_id    BIGINT NOT NULL REFERENCES companies(id),
+    name          VARCHAR(150) NOT NULL,
+    description   TEXT,
+    unit_price    NUMERIC(12,2) NOT NULL CHECK (unit_price >= 0),
+    unit          VARCHAR(20) NOT NULL DEFAULT 'UN',
+    is_active     BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_catalog_items_company_id ON catalog_items(company_id);
+CREATE INDEX idx_catalog_items_company_active ON catalog_items(company_id) WHERE is_active = TRUE;
+
+CREATE TRIGGER trg_catalog_items_updated_at
+    BEFORE UPDATE ON catalog_items
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- ----------------------------------------------------------------------------
+-- Orçamento — um por WorkOrder (ver ADR-0002: versionamento descartado para
+-- o MVP). Nasce em RASCUNHO ao ser criado a partir de uma WorkOrder em
+-- SOLICITACAO_RECEBIDA; itens só podem ser adicionados/removidos nesse
+-- estado. APROVADO/RECUSADO refletem a decisão registrada internamente pelo
+-- Operador (aprovação pública pelo Cliente é escopo do Portal, V3).
+-- ----------------------------------------------------------------------------
+
+CREATE TABLE budgets (
+    id              BIGSERIAL PRIMARY KEY,
+    uuid            UUID NOT NULL UNIQUE DEFAULT gen_random_uuid(),
+    company_id      BIGINT NOT NULL REFERENCES companies(id),
+    work_order_id   BIGINT NOT NULL UNIQUE REFERENCES work_orders(id),
+
+    status          VARCHAR(20) NOT NULL DEFAULT 'RASCUNHO'
+                    CHECK (status IN ('RASCUNHO', 'APROVADO', 'RECUSADO')),
+    total_amount    NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (total_amount >= 0),
+
+    created_by_id   BIGINT NOT NULL REFERENCES users(id),
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_budgets_company_id ON budgets(company_id);
+
+CREATE TRIGGER trg_budgets_updated_at
+    BEFORE UPDATE ON budgets
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- ----------------------------------------------------------------------------
+-- Itens do orçamento. catalog_item_id é referência opcional (item pode ser
+-- avulso); description/unit_price são sempre gravados como snapshot no
+-- momento da adição, para que alterações futuras no catálogo não afetem
+-- orçamentos já criados.
+-- ----------------------------------------------------------------------------
+
+CREATE TABLE budget_items (
+    id                BIGSERIAL PRIMARY KEY,
+    uuid              UUID NOT NULL UNIQUE DEFAULT gen_random_uuid(),
+    budget_id         BIGINT NOT NULL REFERENCES budgets(id) ON DELETE CASCADE,
+    catalog_item_id   BIGINT REFERENCES catalog_items(id) ON DELETE SET NULL,
+
+    description       VARCHAR(150) NOT NULL,
+    quantity          NUMERIC(10,2) NOT NULL CHECK (quantity > 0),
+    unit_price        NUMERIC(12,2) NOT NULL CHECK (unit_price >= 0),
+    subtotal          NUMERIC(12,2) NOT NULL CHECK (subtotal >= 0),
+
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_budget_items_budget_id ON budget_items(budget_id);
+
+-- ============================================================================
 -- DOMÍNIO: AUDITORIA E TIMELINE
 -- ============================================================================
 
@@ -240,9 +316,10 @@ COMMENT ON TABLE  work_orders IS 'Aggregate root do domínio FlowOps (decisão D
 COMMENT ON COLUMN work_orders.status IS 'State machine: transições validadas na camada Service do Spring Boot, nunca via UPDATE direto.';
 COMMENT ON TABLE  domain_events IS 'Timeline de eventos de negócio de uma WorkOrder, usada para histórico e auditoria.';
 COMMENT ON TABLE  companies IS 'Tenant lógico (D-06). Todas as tabelas operacionais referenciam company_id para isolamento de dados.';
+COMMENT ON TABLE  budgets IS 'Orçamento comercial de uma WorkOrder (V2.1). Um por WorkOrder — ver ADR-0002.';
 
 -- ============================================================================
--- Fim do script — Etapa 2.2 concluída
--- Fora deste escopo (documentado em Roadmap e Entrega, não implementado no MVP):
--- requests, budgets, budget_items, payments, evidences, notifications
+-- Fim do script — V2.1 (Orçamentos e Catálogo) concluída
+-- Fora deste escopo (documentado em Roadmap e Entrega, não implementado ainda):
+-- requests, payments, evidences, notifications
 -- ============================================================================

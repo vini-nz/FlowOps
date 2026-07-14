@@ -152,6 +152,59 @@ se registra uma observação sem avançar a etapa. Uma transição realmente
 inválida (ex: `PENDENTE` direto para `CONCLUIDA`, ou qualquer mudança a
 partir de `CONCLUIDA`) retorna `409`.
 
+## Catálogo
+
+| Método | Rota | Descrição |
+|---|---|---|
+| `GET` | `/catalog-items` | Lista paginada de itens ativos. Aceita `page`, `size`, `sort` e `search` (filtro por nome) |
+| `POST` | `/catalog-items` | Cria um item — **restrito a `ADMIN_EMPRESA` e `OPERADOR`** |
+| `PUT` | `/catalog-items/{uuid}` | Atualiza um item — **restrito a `ADMIN_EMPRESA` e `OPERADOR`** |
+| `DELETE` | `/catalog-items/{uuid}` | Desativa um item (`is_active = false`) — **restrito a `ADMIN_EMPRESA` e `OPERADOR`** |
+
+**Request de criação/atualização:**
+```json
+{ "name": "Hora técnica", "description": "Opcional", "unitPrice": 150.00, "unit": "HORA" }
+```
+
+`name` e `unitPrice` são obrigatórios. `unit` é livre (`UN`, `HORA`, `M2`...),
+padrão `UN`.
+
+## Orçamentos
+
+Sub-recurso de WorkOrders — um orçamento por WorkOrder (ver ADR-0002, sem
+versionamento). Itens só podem ser adicionados/removidos e o status só pode
+ser decidido enquanto o orçamento está em `RASCUNHO`.
+
+| Método | Rota | Descrição |
+|---|---|---|
+| `GET` | `/work-orders/{workOrderUuid}/budget` | Detalhe do orçamento com itens. `404` se ainda não existir orçamento para esta WorkOrder |
+| `POST` | `/work-orders/{workOrderUuid}/budget` | Cria o orçamento — só válido com a WorkOrder em `SOLICITACAO_RECEBIDA`; avança para `ORCAMENTO_GERADO` — **restrito a `ADMIN_EMPRESA` e `OPERADOR`** |
+| `POST` | `/work-orders/{workOrderUuid}/budget/items` | Adiciona um item, recalcula o total — **restrito a `ADMIN_EMPRESA` e `OPERADOR`** |
+| `DELETE` | `/work-orders/{workOrderUuid}/budget/items/{itemUuid}` | Remove um item, recalcula o total — **restrito a `ADMIN_EMPRESA` e `OPERADOR`** |
+| `PATCH` | `/work-orders/{workOrderUuid}/budget/status` | Registra aprovação/recusa (interno, pelo Operador) e avança a WorkOrder — **restrito a `ADMIN_EMPRESA` e `OPERADOR`** |
+
+**Request de item (do catálogo):**
+```json
+{ "catalogItemUuid": "uuid-do-item", "quantity": 2 }
+```
+`description` e `unitPrice` são opcionais quando `catalogItemUuid` é
+informado — herdam o snapshot do item de catálogo no momento da adição.
+
+**Request de item (avulso):**
+```json
+{ "description": "Material extra", "quantity": 1, "unitPrice": 50.00 }
+```
+Sem `catalogItemUuid`, `description` e `unitPrice` passam a ser obrigatórios
+(`400`/`409` se ausentes).
+
+**Request de decisão:**
+```json
+{ "status": "APROVADO" }
+```
+Aceita `APROVADO` ou `RECUSADO` (`RASCUNHO` não é um valor válido de
+destino). Exige ao menos um item e o orçamento ainda em `RASCUNHO` — um
+orçamento já decidido, ou sem itens, retorna `409`.
+
 ## Usuários
 
 | Método | Rota | Descrição |
