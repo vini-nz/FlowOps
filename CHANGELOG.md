@@ -3,6 +3,67 @@
 Todas as mudanças relevantes do projeto são registradas aqui.
 Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
+## [V2.1] — Orçamentos e Catálogo
+
+Primeira entrega da V2 (Núcleo Comercial e Fundação Técnica), seguindo o
+Kanban ativo definido em `📌 Kanban Ativo — Sprint V2` (Notion).
+
+### Adicionado
+- Módulo de Catálogo (`CatalogItemController`, `CatalogItemService`):
+  CRUD de produtos/serviços reutilizáveis por empresa (`catalog_items`),
+  com nome, descrição, valor unitário e unidade. Segue o mesmo padrão de
+  desativação simples (`is_active`) já usado no restante do projeto
+- Módulo de Orçamentos (`BudgetController`, `BudgetService`): resolve a
+  inconsistência identificada na auditoria cruzada de 12/jul — o enum
+  `WorkOrderStatus` já previa `ORCAMENTO_GERADO`/`AGUARDANDO_APROVACAO`/
+  `APROVADO`/`RECUSADO`, mas não existia entidade de orçamento para
+  sustentar esse fluxo. `POST /work-orders/{uuid}/budget` cria o orçamento
+  (um por WorkOrder — ver ADR-0002) e avança a WorkOrder para
+  `ORCAMENTO_GERADO`; itens são adicionados/removidos via
+  `/budget/items` com subtotal calculado automaticamente e total
+  recalculado a cada mudança; `PATCH /budget/status` registra
+  aprovação/recusa internamente pelo Operador (aprovação pública pelo
+  Cliente é escopo do Portal, V3) e encadeia as transições
+  `ORCAMENTO_GERADO → AGUARDANDO_APROVACAO → APROVADO|RECUSADO` reaproveitando
+  `WorkOrderStatusTransitions` e `WorkOrderService.updateStatus` já
+  existentes, em vez de duplicar a validação de estado
+- Itens de orçamento gravam `description`/`unitPrice` como snapshot no
+  momento da adição — alterações futuras no catálogo não afetam orçamentos
+  já criados (podem referenciar um item de catálogo ou ser avulsos)
+- Frontend: página `Catalog.jsx` (CRUD de catálogo, mesmo padrão de
+  `Clients.jsx`) e painel de orçamento expansível no card de WorkOrder em
+  `WorkOrders.jsx` (mesmo padrão do painel de Etapas da Sprint 4) —
+  criar orçamento, adicionar item (do catálogo ou avulso), remover item,
+  registrar aprovação/recusa
+- `backend/src/test` criado nesta entrega — não existia até agora (Sprints
+  1-4 validaram state machines com `javac` avulso, sem deixar teste
+  versionado). `BudgetServiceTest` (9 cenários, JUnit 5 + Mockito) cobre as
+  regras próprias do módulo: 1 orçamento por WorkOrder, edição só em
+  `RASCUNHO`, snapshot de preço do catálogo, recálculo de total e a
+  exigência de ao menos 1 item para aprovar/recusar. `mvn clean package`
+  (via Docker, Java 21) roda limpo com os testes habilitados
+
+### Débito técnico registrado (Épico Dívida Técnica)
+- Flyway, CI (GitHub Actions) e Swagger/OpenAPI continuam pendentes —
+  divergência encontrada entre a documentação (que os listava como
+  "já entregues na Sprint 5") e o código real, que nunca teve Sprint 5.
+  Decisão registrada em conversa com o responsável pelo projeto: esta
+  entrega segue com `ddl-auto: validate` + `flowops_ddl.sql` manual
+  (mesmo padrão das Sprints 1-4); Flyway/CI ficam como pendência explícita
+  para uma entrega futura, não mais como "concluído" incorretamente
+- O repositório real (`FlowOps`, branch `main`) estava parado no commit da
+  Sprint 3 — o código da Sprint 4 (Etapas + Dashboard estendido) existia
+  pronto só num pacote `.zip` de entrega, nunca commitado. Sincronizado e
+  commitado nesta mesma entrega, antes do trabalho da V2.1, para que o
+  histórico do repositório reflita o que está de fato implementado
+
+### Decisão de arquitetura
+- ADR-0002: orçamento sem versionamento (um por WorkOrder) — a state
+  machine atual não sustenta reabertura de orçamento após `RECUSADO`
+  (estado terminal), então versionamento seria complexidade sem caso de
+  uso real hoje. Editar itens em `RASCUNHO` cobre o cenário real de ajuste
+  antes da decisão
+
 ## [Sprint 4] — Etapas e Dashboard
 
 ### Adicionado
