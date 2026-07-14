@@ -1,21 +1,68 @@
-# Ambiente
+# ==============================================================================
+# Ambiente e segredos
+# ==============================================================================
 .env
+.env.local
+.env.production
+.env.*.local
 
-# Backend (Java / Maven)
+# ==============================================================================
+# Backend (Java / Maven / Spring Boot)
+# ==============================================================================
 backend/target/
 backend/.mvn/
 *.class
+*.jar
+!.mvn/wrapper/maven-wrapper.jar
+HELP.md
 
+# ==============================================================================
 # Frontend (Node / Vite)
+# ==============================================================================
 frontend/node_modules/
 frontend/dist/
 frontend/.vite/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
-# IDEs
+# ==============================================================================
+# IDEs e editores
+# ==============================================================================
 .idea/
 .vscode/
 *.iml
+.project
+.classpath
+.factorypath
+*.sublime-workspace
+*.sublime-project
+.~lock*
 
-# SO
+# ==============================================================================
+# Ferramentas de IDE / assistentes de IA (artefatos locais, nao fazem parte do projeto)
+# ==============================================================================
+.github/modernize/
+**/.github/modernize/
+
+# ==============================================================================
+# Postman (workspace local: coleções, ambientes e credenciais NAO devem ser
+# compartilhados via Git - cada dev usa seu próprio workspace do Postman;
+# se a equipe quiser compartilhar uma coleção de referência, exportar
+# manualmente para um arquivo único versionado, ex: docs/postman-collection.json)
+# ==============================================================================
+**/.postman/
+**/postman/
+
+# ==============================================================================
+# Sistema operacional
+# ==============================================================================
 .DS_Store
 Thumbs.db
+Desktop.ini
+
+# ==============================================================================
+# Logs e artefatos de execução
+# ==============================================================================
+*.log
+logs/
