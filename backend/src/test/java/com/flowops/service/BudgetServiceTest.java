@@ -107,7 +107,7 @@ class BudgetServiceTest {
         var response = budgetService.create(COMPANY_ID, wo.getUuid(), actor);
 
         assertThat(response.status()).isEqualTo(BudgetStatus.RASCUNHO);
-        verify(workOrderService).updateStatus(COMPANY_ID, wo.getUuid(), WorkOrderStatus.ORCAMENTO_GERADO, actor);
+        verify(workOrderService).applyDerivedStatus(COMPANY_ID, wo.getUuid(), WorkOrderStatus.ORCAMENTO_GERADO, actor);
         verify(domainEventRepository).save(any());
     }
 
@@ -121,7 +121,7 @@ class BudgetServiceTest {
                 .isInstanceOf(BusinessRuleException.class);
 
         verify(budgetRepository, never()).save(any());
-        verify(workOrderService, never()).updateStatus(any(), any(), any(), any());
+        verify(workOrderService, never()).applyDerivedStatus(any(), any(), any(), any());
     }
 
     @Test
@@ -209,7 +209,7 @@ class BudgetServiceTest {
         assertThatThrownBy(() -> budgetService.updateStatus(COMPANY_ID, wo.getUuid(), BudgetStatus.APROVADO, actor))
                 .isInstanceOf(BusinessRuleException.class);
 
-        verify(workOrderService, never()).updateStatus(any(), any(), any(), any());
+        verify(workOrderService, never()).applyDerivedStatus(any(), any(), any(), any());
     }
 
     @Test
@@ -224,9 +224,9 @@ class BudgetServiceTest {
 
         budgetService.updateStatus(COMPANY_ID, wo.getUuid(), BudgetStatus.APROVADO, actor);
 
-        verify(workOrderService).updateStatus(COMPANY_ID, wo.getUuid(), WorkOrderStatus.AGUARDANDO_APROVACAO, actor);
-        verify(workOrderService).updateStatus(COMPANY_ID, wo.getUuid(), WorkOrderStatus.APROVADO, actor);
-        verify(workOrderService, times(2)).updateStatus(eq(COMPANY_ID), eq(wo.getUuid()), any(), eq(actor));
+        verify(workOrderService).applyDerivedStatus(COMPANY_ID, wo.getUuid(), WorkOrderStatus.AGUARDANDO_APROVACAO, actor);
+        verify(workOrderService).applyDerivedStatus(COMPANY_ID, wo.getUuid(), WorkOrderStatus.APROVADO, actor);
+        verify(workOrderService, times(2)).applyDerivedStatus(eq(COMPANY_ID), eq(wo.getUuid()), any(), eq(actor));
         assertThat(b.getStatus()).isEqualTo(BudgetStatus.APROVADO);
         // Criterio de aceitacao V2.2: "registrar aprovacao/recusa com data/hora e responsavel"
         assertThat(b.getDecidedBy()).isEqualTo(actor);
@@ -245,7 +245,7 @@ class BudgetServiceTest {
         assertThatThrownBy(() -> budgetService.updateStatus(COMPANY_ID, wo.getUuid(), BudgetStatus.RECUSADO, actor))
                 .isInstanceOf(BusinessRuleException.class);
 
-        verify(workOrderService, never()).updateStatus(any(), any(), any(), any());
+        verify(workOrderService, never()).applyDerivedStatus(any(), any(), any(), any());
     }
 
     @Test
