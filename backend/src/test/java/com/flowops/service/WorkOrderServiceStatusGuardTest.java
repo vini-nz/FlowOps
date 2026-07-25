@@ -11,7 +11,9 @@ import com.flowops.repository.ClientRepository;
 import com.flowops.repository.DomainEventRepository;
 import com.flowops.repository.UserRepository;
 import com.flowops.repository.WorkOrderRepository;
+import com.flowops.repository.WorkOrderStepChecklistItemRepository;
 import com.flowops.repository.WorkOrderStepRepository;
+import com.flowops.repository.WorkflowStepChecklistItemRepository;
 import com.flowops.repository.WorkflowStepRepository;
 import com.flowops.repository.WorkflowTemplateRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -45,6 +47,8 @@ class WorkOrderServiceStatusGuardTest {
     @Mock private WorkflowTemplateRepository workflowTemplateRepository;
     @Mock private WorkflowStepRepository workflowStepRepository;
     @Mock private WorkOrderStepRepository workOrderStepRepository;
+    @Mock private WorkflowStepChecklistItemRepository workflowStepChecklistItemRepository;
+    @Mock private WorkOrderStepChecklistItemRepository workOrderStepChecklistItemRepository;
 
     private WorkOrderService service;
 
@@ -56,7 +60,8 @@ class WorkOrderServiceStatusGuardTest {
     void setUp() {
         service = new WorkOrderService(
                 workOrderRepository, clientRepository, userRepository, domainEventRepository,
-                workflowTemplateRepository, workflowStepRepository, workOrderStepRepository);
+                workflowTemplateRepository, workflowStepRepository, workOrderStepRepository,
+                workflowStepChecklistItemRepository, workOrderStepChecklistItemRepository);
         actor = new User();
         actor.setId(9L);
         actor.setName("Operador Demonstração");

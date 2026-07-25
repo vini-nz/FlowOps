@@ -4,11 +4,14 @@ import com.flowops.dto.workorderstep.WorkOrderStepStatusUpdateRequest;
 import com.flowops.entity.User;
 import com.flowops.entity.WorkOrder;
 import com.flowops.entity.WorkOrderStep;
+import com.flowops.entity.WorkOrderStepChecklistItem;
+import com.flowops.entity.WorkflowStepChecklistItem;
 import com.flowops.enums.StepStatus;
 import com.flowops.enums.WorkOrderStatus;
 import com.flowops.exception.BusinessRuleException;
 import com.flowops.repository.DomainEventRepository;
 import com.flowops.repository.WorkOrderRepository;
+import com.flowops.repository.WorkOrderStepChecklistItemRepository;
 import com.flowops.repository.WorkOrderStepRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -43,6 +46,8 @@ class WorkOrderStepServiceTest {
     private DomainEventRepository domainEventRepository;
     @Mock
     private WorkOrderService workOrderService;
+    @Mock
+    private WorkOrderStepChecklistItemRepository checklistItemRepository;
 
     private WorkOrderStepService service;
 
@@ -56,7 +61,8 @@ class WorkOrderStepServiceTest {
     @BeforeEach
     void setUp() {
         service = new WorkOrderStepService(
-                workOrderStepRepository, workOrderRepository, domainEventRepository, workOrderService);
+                workOrderStepRepository, workOrderRepository, domainEventRepository, workOrderService,
+                checklistItemRepository);
         actor = new User();
         actor.setId(9L);
 
@@ -174,6 +180,114 @@ class WorkOrderStepServiceTest {
                 COMPANY_ID, workOrder.getUuid(), producao.getUuid(), request(StepStatus.EM_ANDAMENTO), actor);
 
         verify(workOrderService, never()).applyDerivedStatus(any(), any(), any(), any());
+    }
+
+    @Test
+    void cannotChangeChecklistOfACompletedStep() {
+        // CONCLUIDA e terminal para a etapa - o checklist acompanha, senao
+        // seria possivel reescrever a evidencia de um trabalho encerrado.
+        givenWorkOrder(WorkOrderStatus.EM_EXECUCAO);
+        producao.setStatus(StepStatus.CONCLUIDA);
+        givenStepLookup(producao);
+
+        assertThatThrownBy(() -> service.addChecklistItem(
+                COMPANY_ID, workOrder.getUuid(), producao.getUuid(), "Item tardio", actor))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("concluída");
+    }
+
+    @Test
+    void cannotChangeChecklistBeforeBudgetApproval() {
+        givenWorkOrder(WorkOrderStatus.SOLICITACAO_RECEBIDA);
+        givenStepLookup(producao);
+
+        assertThatThrownBy(() -> service.addChecklistItem(
+                COMPANY_ID, workOrder.getUuid(), producao.getUuid(), "Item", actor))
+                .isInstanceOf(BusinessRuleException.class);
+    }
+
+    @Test
+    void togglingChecklistItemRecordsWhoAndWhen() {
+        givenWorkOrder(WorkOrderStatus.EM_EXECUCAO);
+        givenStepLookup(producao);
+        WorkOrderStepChecklistItem item = checklistItem("Conferir medidas", null);
+        when(checklistItemRepository.findByUuidAndWorkOrderStepId(item.getUuid(), producao.getId()))
+                .thenReturn(Optional.of(item));
+        when(checklistItemRepository.findByWorkOrderStepIdOrderByItemOrderAsc(producao.getId()))
+                .thenReturn(List.of(item));
+
+        service.toggleChecklistItem(
+                COMPANY_ID, workOrder.getUuid(), producao.getUuid(), item.getUuid(), true, actor);
+
+        assertThat(item.isDone()).isTrue();
+        assertThat(item.getDoneBy()).isEqualTo(actor);
+        assertThat(item.getDoneAt()).isNotNull();
+    }
+
+    @Test
+    void untogglingChecklistItemClearsWhoAndWhen() {
+        givenWorkOrder(WorkOrderStatus.EM_EXECUCAO);
+        givenStepLookup(producao);
+        WorkOrderStepChecklistItem item = checklistItem("Conferir medidas", null);
+        item.setDone(true);
+        item.setDoneBy(actor);
+        item.setDoneAt(java.time.OffsetDateTime.now());
+        when(checklistItemRepository.findByUuidAndWorkOrderStepId(item.getUuid(), producao.getId()))
+                .thenReturn(Optional.of(item));
+        when(checklistItemRepository.findByWorkOrderStepIdOrderByItemOrderAsc(producao.getId()))
+                .thenReturn(List.of(item));
+
+        service.toggleChecklistItem(
+                COMPANY_ID, workOrder.getUuid(), producao.getUuid(), item.getUuid(), false, actor);
+
+        assertThat(item.isDone()).isFalse();
+        assertThat(item.getDoneBy()).isNull();
+        assertThat(item.getDoneAt()).isNull();
+    }
+
+    @Test
+    void cannotRemoveAChecklistItemThatCameFromTheTemplate() {
+        // Remover numa OS um item que a empresa definiu no molde esconderia
+        // uma exigencia - so item avulso pode sair.
+        givenWorkOrder(WorkOrderStatus.EM_EXECUCAO);
+        givenStepLookup(producao);
+        WorkflowStepChecklistItem templateItem = new WorkflowStepChecklistItem();
+        WorkOrderStepChecklistItem item = checklistItem("Conferir medidas", templateItem);
+        when(checklistItemRepository.findByUuidAndWorkOrderStepId(item.getUuid(), producao.getId()))
+                .thenReturn(Optional.of(item));
+
+        assertThatThrownBy(() -> service.removeChecklistItem(
+                COMPANY_ID, workOrder.getUuid(), producao.getUuid(), item.getUuid(), actor))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("workflow da empresa");
+
+        verify(checklistItemRepository, never()).delete(any());
+    }
+
+    @Test
+    void canRemoveAnAdHocChecklistItem() {
+        givenWorkOrder(WorkOrderStatus.EM_EXECUCAO);
+        givenStepLookup(producao);
+        WorkOrderStepChecklistItem item = checklistItem("Item avulso", null);
+        when(checklistItemRepository.findByUuidAndWorkOrderStepId(item.getUuid(), producao.getId()))
+                .thenReturn(Optional.of(item));
+        when(checklistItemRepository.findByWorkOrderStepIdOrderByItemOrderAsc(producao.getId()))
+                .thenReturn(List.of());
+
+        service.removeChecklistItem(
+                COMPANY_ID, workOrder.getUuid(), producao.getUuid(), item.getUuid(), actor);
+
+        verify(checklistItemRepository).delete(item);
+    }
+
+    private WorkOrderStepChecklistItem checklistItem(String description, WorkflowStepChecklistItem origin) {
+        WorkOrderStepChecklistItem item = new WorkOrderStepChecklistItem();
+        item.setUuid(UUID.randomUUID());
+        item.setWorkOrderStep(producao);
+        item.setItemOrder(1);
+        item.setDescription(description);
+        item.setWorkflowChecklistItem(origin);
+        return item;
     }
 
     @Test
