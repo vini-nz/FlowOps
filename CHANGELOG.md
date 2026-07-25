@@ -3,6 +3,57 @@
 Todas as mudanças relevantes do projeto são registradas aqui.
 Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
+## [V2.4] — Integridade do Fluxo
+
+Entrega não planejada no Kanban original: nasceu de uma revisão do fluxo
+ponta a ponta que encontrou estados que o negócio não reconhece. Ver
+ADR-0003.
+
+### Corrigido
+- **Beco sem saída irreversível entre status e orçamento.**
+  `SOLICITACAO_RECEBIDA → ORCAMENTO_GERADO` era uma transição manual válida,
+  mas `BudgetService.create` exige `SOLICITACAO_RECEBIDA` — quem avançasse o
+  status pela tela deixava a WorkOrder afirmando ter orçamento **sem ter e
+  sem nunca mais poder criar um** (criar retornava 409, PDF retornava 404,
+  permanentemente). Reproduzido contra o sistema real antes da correção
+- **Etapas podiam ser executadas sem orçamento aprovado** — era possível
+  concluir a etapa de instalação com a WorkOrder ainda em
+  `SOLICITACAO_RECEBIDA`
+- **Etapas podiam ser executadas fora de ordem** — "Instalação" concluída
+  com "Produção" e "Acabamento" ainda pendentes
+- **Status caminhava até `FINALIZADO` sem nenhuma etapa executada** — o
+  sistema declarava a entrega de um trabalho que nunca começou
+
+### Alterado
+- `WorkOrderStatusTransitions` passa a distinguir `isValid` (máquina
+  completa) de `isManual` (o que o usuário dispara). A fase comercial
+  inteira (`ORCAMENTO_GERADO`/`AGUARDANDO_APROVACAO`/`APROVADO`/`RECUSADO`)
+  sai do conjunto manual e só é aplicada pelo sistema via
+  `WorkOrderService.applyDerivedStatus`, como consequência de criar ou
+  decidir um orçamento
+- Iniciar a primeira etapa move `APROVADO → EM_EXECUCAO` sozinho — começar
+  a trabalhar é o fato que define "em execução"
+- Erros de transição agora dizem qual ação provoca o status pretendido
+  ("O status muda sozinho ao criar o orçamento desta Ordem de Serviço") em
+  vez de um "transição inválida" seco
+- Frontend: botões da fase comercial deixam de existir e dão lugar à dica da
+  ação que move o status; botão de iniciar etapa fica desabilitado com
+  tooltip quando a etapa anterior não terminou; painel de etapas explica por
+  que está somente-leitura, com texto diferente para "ainda não aprovado",
+  "recusado" e "já concluída"
+
+### Testado
+- `WorkOrderStatusTransitionsTest` (6 cenários), incluindo uma verificação
+  de que **nenhum** estado alcança a fase comercial manualmente — impede o
+  beco sem saída de voltar por outro caminho
+- `WorkOrderStepServiceTest` (7 cenários) e `WorkOrderServiceStatusGuardTest`
+  (6 cenários): cada trava, mais os casos que devem continuar passando
+  (WorkOrder sem etapas ainda pode ser entregue; bloquear etapa futura não
+  exige a anterior concluída)
+- 42 cenários no total. Fluxo feliz completo revalidado ponta a ponta contra
+  o sistema real (criação → orçamento → aprovação → 3 etapas em ordem →
+  entrega → finalização), e cada trava verificada pela API e pela tela
+
 ## [V2.3] — Timeline de Acompanhamento
 
 ### Adicionado

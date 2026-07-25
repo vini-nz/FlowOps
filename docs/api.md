@@ -113,12 +113,27 @@ Apenas `clientUuid` e `title` são obrigatórios. `priority` aceita
 
 **Request de transição de status:**
 ```json
-{ "status": "ORCAMENTO_GERADO" }
+{ "status": "EM_EXECUCAO" }
 ```
 
-Transições seguem a state machine documentada em `docs/architecture.md`.
-Uma transição inválida (ex: pular de `SOLICITACAO_RECEBIDA` direto para
-`FINALIZADO`) retorna `409` com a mensagem do que foi tentado.
+Este endpoint aceita **apenas as transições manuais** (V2.4 / ADR-0003):
+`APROVADO → EM_EXECUCAO`, `EM_EXECUCAO → ENTREGUE` e
+`ENTREGUE → FINALIZADO`.
+
+A fase comercial não é manual — é consequência de ações no orçamento:
+
+| Status pretendido | Como acontece |
+|---|---|
+| `ORCAMENTO_GERADO` | `POST /work-orders/{uuid}/budget` |
+| `AGUARDANDO_APROVACAO`, `APROVADO`, `RECUSADO` | `PATCH /work-orders/{uuid}/budget/status` |
+| `EM_EXECUCAO` | manual, ou automático ao iniciar a primeira etapa |
+
+Tentar essas transições aqui retorna `409` com a ação que de fato as
+provoca (ex: *"O status muda sozinho ao criar o orçamento desta Ordem de
+Serviço"*). `EM_EXECUCAO → ENTREGUE` retorna `409` se alguma etapa não
+estiver `CONCLUIDA` — uma WorkOrder sem etapas pode ser entregue
+normalmente. Uma transição fora da máquina de estados (ex:
+`SOLICITACAO_RECEBIDA` direto para `FINALIZADO`) também retorna `409`.
 
 **Request de atribuição:**
 ```json
@@ -151,6 +166,19 @@ WorkOrder, enviar o mesmo `status` atual é uma transição válida — é assim
 se registra uma observação sem avançar a etapa. Uma transição realmente
 inválida (ex: `PENDENTE` direto para `CONCLUIDA`, ou qualquer mudança a
 partir de `CONCLUIDA`) retorna `409`.
+
+Além da própria state machine, desde a V2.4 (ADR-0003) valem duas travas de
+integridade, ambas com `409`:
+
+- A WorkOrder precisa estar em `APROVADO` ou `EM_EXECUCAO`. Não se trabalha
+  uma etapa antes do orçamento aprovado, nem depois da entrega.
+- Uma etapa só **inicia** (`EM_ANDAMENTO`) com todas as anteriores por
+  `stepOrder` em `CONCLUIDA` — a mensagem diz qual etapa falta. Marcar
+  `BLOQUEADA` numa etapa futura continua permitido: sinalizar impedimento
+  não é começar o trabalho.
+
+Iniciar a primeira etapa move a WorkOrder de `APROVADO` para `EM_EXECUCAO`
+automaticamente.
 
 ## Catálogo
 

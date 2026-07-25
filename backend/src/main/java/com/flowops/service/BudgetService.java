@@ -88,7 +88,7 @@ public class BudgetService {
         budgetRepository.save(budget);
 
         recordEvent(workOrder, "ORCAMENTO_CRIADO", actor, null);
-        workOrderService.updateStatus(companyId, workOrderUuid, WorkOrderStatus.ORCAMENTO_GERADO, actor);
+        workOrderService.applyDerivedStatus(companyId, workOrderUuid, WorkOrderStatus.ORCAMENTO_GERADO, actor);
 
         return get(companyId, workOrderUuid);
     }
@@ -168,8 +168,8 @@ public class BudgetService {
                 ? WorkOrderStatus.APROVADO
                 : WorkOrderStatus.RECUSADO;
 
-        workOrderService.updateStatus(companyId, workOrderUuid, WorkOrderStatus.AGUARDANDO_APROVACAO, actor);
-        workOrderService.updateStatus(companyId, workOrderUuid, targetWorkOrderStatus, actor);
+        workOrderService.applyDerivedStatus(companyId, workOrderUuid, WorkOrderStatus.AGUARDANDO_APROVACAO, actor);
+        workOrderService.applyDerivedStatus(companyId, workOrderUuid, targetWorkOrderStatus, actor);
 
         budget.setStatus(newStatus);
         budget.setDecidedBy(actor);

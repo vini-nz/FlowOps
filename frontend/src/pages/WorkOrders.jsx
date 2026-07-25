@@ -29,18 +29,28 @@ const STATUS_COLORS = {
   FINALIZADO: 'bg-flowops-900 text-white'
 }
 
-// Espelha WorkOrderStatusTransitions.java - so para guiar a interface.
-// A validacao de verdade acontece no backend; se as duas divergirem, o
-// backend responde 409 com a mensagem do que deu errado.
+// Espelha WorkOrderStatusTransitions.MANUAL (V2.4 / ADR-0003): so as
+// transicoes que o usuario dispara diretamente. A fase comercial saiu daqui
+// de proposito - ORCAMENTO_GERADO/APROVADO/RECUSADO sao consequencia de
+// acoes no orcamento, nao botoes. A validacao de verdade acontece no
+// backend; se as duas divergirem, o backend responde 409 com o motivo.
 const NEXT_STATUSES = {
-  SOLICITACAO_RECEBIDA: ['ORCAMENTO_GERADO'],
-  ORCAMENTO_GERADO: ['AGUARDANDO_APROVACAO'],
-  AGUARDANDO_APROVACAO: ['APROVADO', 'RECUSADO'],
+  SOLICITACAO_RECEBIDA: [],
+  ORCAMENTO_GERADO: [],
+  AGUARDANDO_APROVACAO: [],
   APROVADO: ['EM_EXECUCAO'],
   EM_EXECUCAO: ['ENTREGUE'],
   ENTREGUE: ['FINALIZADO'],
   RECUSADO: [],
   FINALIZADO: []
+}
+
+// Por que nao ha botao de avanco neste status - evita que a tela pareca
+// travada sem explicacao agora que a fase comercial nao e mais manual.
+const STATUS_HINTS = {
+  SOLICITACAO_RECEBIDA: 'Crie o orçamento para avançar',
+  ORCAMENTO_GERADO: 'Registre a aprovação ou recusa do orçamento para avançar',
+  AGUARDANDO_APROVACAO: 'Registre a aprovação ou recusa do orçamento para avançar'
 }
 
 const STEP_STATUS_LABELS = {
@@ -87,6 +97,30 @@ function formatCurrency(value) {
 function formatDateTime(isoDateTime) {
   if (!isoDateTime) return ''
   return new Date(isoDateTime).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })
+}
+
+// Espelha assertWorkOrderIsExecutable no backend (V2.4 / ADR-0003).
+function isExecutable(workOrder) {
+  return workOrder.status === 'APROVADO' || workOrder.status === 'EM_EXECUCAO'
+}
+
+// Por que as etapas estao somente-leitura. Depende de o trabalho ainda nao
+// ter comecado ou ja ter terminado - dizer "espere a aprovacao do orcamento"
+// numa WorkOrder ja finalizada seria simplesmente falso.
+function stepsLockedReason(workOrder) {
+  switch (workOrder.status) {
+    case 'SOLICITACAO_RECEBIDA':
+    case 'ORCAMENTO_GERADO':
+    case 'AGUARDANDO_APROVACAO':
+      return 'As etapas só podem ser trabalhadas depois que o orçamento for aprovado.'
+    case 'RECUSADO':
+      return 'Orçamento recusado — esta Ordem de Serviço não será executada.'
+    case 'ENTREGUE':
+    case 'FINALIZADO':
+      return 'Ordem de Serviço concluída — as etapas ficam apenas como histórico.'
+    default:
+      return null
+  }
 }
 
 export default function WorkOrders() {
@@ -568,6 +602,10 @@ export default function WorkOrders() {
                   </button>
                 ))}
 
+                {STATUS_HINTS[wo.status] && (
+                  <span className="text-xs italic text-gray-500">{STATUS_HINTS[wo.status]}</span>
+                )}
+
                 <button
                   onClick={() => toggleSteps(wo)}
                   className="rounded border border-gray-300 px-3 py-1 text-gray-600 hover:bg-gray-100"
@@ -780,50 +818,75 @@ export default function WorkOrders() {
                     </p>
                   )}
 
+                  {!isExecutable(wo) && stepsByWorkOrder[wo.uuid]?.length > 0 && stepsLockedReason(wo) && (
+                    <p className="mb-3 rounded bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                      {stepsLockedReason(wo)}
+                    </p>
+                  )}
+
                   <div className="space-y-3">
-                    {stepsByWorkOrder[wo.uuid]?.map((step) => (
-                      <div key={step.uuid} className="rounded border border-gray-200 bg-gray-50 p-3">
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm font-medium text-gray-800">
-                            {step.stepOrder}. {step.title}
-                          </span>
-                          <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STEP_STATUS_COLORS[step.status]}`}>
-                            {STEP_STATUS_LABELS[step.status]}
-                          </span>
-                        </div>
+                    {stepsByWorkOrder[wo.uuid]?.map((step, stepIndex) => {
+                      const steps = stepsByWorkOrder[wo.uuid]
+                      const blockedByPrevious = steps
+                        .slice(0, stepIndex)
+                        .find((previous) => previous.status !== 'CONCLUIDA')
 
-                        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-                          {STEP_NEXT_STATUSES[step.status]?.map((next) => (
-                            <button
-                              key={next}
-                              onClick={() => handleStepStatusChange(wo.uuid, step, next)}
-                              className="rounded border border-flowops-600 px-2 py-1 text-flowops-700 hover:bg-flowops-50"
-                            >
-                              {STEP_STATUS_LABELS[next]}
-                            </button>
-                          ))}
-                        </div>
-
-                        {step.status === 'CONCLUIDA' ? (
-                          step.notes && <p className="mt-2 text-xs text-gray-600">{step.notes}</p>
-                        ) : (
-                          <div className="mt-2 flex gap-2">
-                            <input
-                              value={notesDraft[step.uuid] ?? ''}
-                              onChange={(e) => setNotesDraft((prev) => ({ ...prev, [step.uuid]: e.target.value }))}
-                              placeholder="Observação da etapa..."
-                              className="flex-1 rounded border border-gray-300 px-2 py-1 text-xs focus:border-flowops-600 focus:outline-none"
-                            />
-                            <button
-                              onClick={() => handleStepNotesSave(wo.uuid, step)}
-                              className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-100"
-                            >
-                              Salvar
-                            </button>
+                      return (
+                        <div key={step.uuid} className="rounded border border-gray-200 bg-gray-50 p-3">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium text-gray-800">
+                              {step.stepOrder}. {step.title}
+                            </span>
+                            <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STEP_STATUS_COLORS[step.status]}`}>
+                              {STEP_STATUS_LABELS[step.status]}
+                            </span>
                           </div>
-                        )}
-                      </div>
-                    ))}
+
+                          {isExecutable(wo) && (
+                            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                              {STEP_NEXT_STATUSES[step.status]?.map((next) => {
+                                // Espelha assertPreviousStepsCompleted no backend:
+                                // so o inicio (EM_ANDAMENTO) depende da etapa anterior;
+                                // bloquear/desbloquear uma etapa futura e livre.
+                                const blocked = next === 'EM_ANDAMENTO' && blockedByPrevious
+                                return (
+                                  <button
+                                    key={next}
+                                    disabled={Boolean(blocked)}
+                                    title={blocked ? `Conclua "${blockedByPrevious.title}" primeiro` : undefined}
+                                    onClick={() => handleStepStatusChange(wo.uuid, step, next)}
+                                    className="rounded border border-flowops-600 px-2 py-1 text-flowops-700 hover:bg-flowops-50 disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400 disabled:hover:bg-transparent"
+                                  >
+                                    {STEP_STATUS_LABELS[next]}
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          )}
+
+                          {step.status === 'CONCLUIDA' ? (
+                            step.notes && <p className="mt-2 text-xs text-gray-600">{step.notes}</p>
+                          ) : isExecutable(wo) ? (
+                            <div className="mt-2 flex gap-2">
+                              <input
+                                value={notesDraft[step.uuid] ?? ''}
+                                onChange={(e) => setNotesDraft((prev) => ({ ...prev, [step.uuid]: e.target.value }))}
+                                placeholder="Observação da etapa..."
+                                className="flex-1 rounded border border-gray-300 px-2 py-1 text-xs focus:border-flowops-600 focus:outline-none"
+                              />
+                              <button
+                                onClick={() => handleStepNotesSave(wo.uuid, step)}
+                                className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-100"
+                              >
+                                Salvar
+                              </button>
+                            </div>
+                          ) : (
+                            step.notes && <p className="mt-2 text-xs text-gray-600">{step.notes}</p>
+                          )}
+                        </div>
+                      )
+                    })}
                   </div>
                 </div>
               )}

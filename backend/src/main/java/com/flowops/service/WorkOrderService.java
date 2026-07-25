@@ -10,6 +10,7 @@ import com.flowops.entity.WorkOrder;
 import com.flowops.entity.WorkOrderStep;
 import com.flowops.entity.WorkflowTemplate;
 import com.flowops.enums.Priority;
+import com.flowops.enums.StepStatus;
 import com.flowops.enums.WorkOrderStatus;
 import com.flowops.exception.BusinessRuleException;
 import com.flowops.exception.ResourceNotFoundException;
@@ -105,8 +106,41 @@ public class WorkOrderService {
                 });
     }
 
+    /**
+     * Transição disparada diretamente pelo usuário (Controller). Só aceita o
+     * subconjunto manual da state machine: a fase comercial
+     * (ORCAMENTO_GERADO/AGUARDANDO_APROVACAO/APROVADO/RECUSADO) é
+     * consequência de ações no orçamento e chega por
+     * {@link #applyDerivedStatus}. Ver ADR-0003.
+     */
     @Transactional
     public WorkOrderResponse updateStatus(Long companyId, UUID workOrderUuid, WorkOrderStatus newStatus, User actor) {
+        WorkOrder workOrder = findOwnedOrThrow(companyId, workOrderUuid);
+        WorkOrderStatus currentStatus = workOrder.getStatus();
+
+        if (!WorkOrderStatusTransitions.isManual(currentStatus, newStatus)) {
+            throw new BusinessRuleException(explainRejectedManualTransition(currentStatus, newStatus));
+        }
+        // Uma WorkOrder nao pode ser entregue enquanto sobra trabalho a fazer:
+        // sem isso o status podia caminhar ate FINALIZADO com todas as etapas
+        // ainda em PENDENTE, e o sistema afirmava uma entrega que nunca houve.
+        if (newStatus == WorkOrderStatus.ENTREGUE) {
+            assertAllStepsCompleted(workOrder);
+        }
+
+        return transitionTo(workOrder, newStatus, actor);
+    }
+
+    /**
+     * Transição aplicada pelo próprio sistema como consequência de um fato
+     * registrado em outro módulo — orçamento criado/decidido
+     * ({@code BudgetService}) ou primeira etapa iniciada
+     * ({@code WorkOrderStepService}). Valida contra a máquina completa, não
+     * contra o subconjunto manual.
+     */
+    @Transactional
+    public WorkOrderResponse applyDerivedStatus(
+            Long companyId, UUID workOrderUuid, WorkOrderStatus newStatus, User actor) {
         WorkOrder workOrder = findOwnedOrThrow(companyId, workOrderUuid);
         WorkOrderStatus currentStatus = workOrder.getStatus();
 
@@ -115,6 +149,12 @@ public class WorkOrderService {
                     "Transição inválida: %s → %s".formatted(currentStatus, newStatus));
         }
 
+        return transitionTo(workOrder, newStatus, actor);
+    }
+
+    private WorkOrderResponse transitionTo(WorkOrder workOrder, WorkOrderStatus newStatus, User actor) {
+        WorkOrderStatus currentStatus = workOrder.getStatus();
+
         workOrder.setStatus(newStatus);
         WorkOrder saved = workOrderRepository.save(workOrder);
 
@@ -122,6 +162,35 @@ public class WorkOrderService {
                 "{\"de\":\"%s\",\"para\":\"%s\"}".formatted(currentStatus, newStatus));
 
         return WorkOrderResponse.from(saved);
+    }
+
+    private void assertAllStepsCompleted(WorkOrder workOrder) {
+        // WorkOrder sem workflow padrao nasce sem etapas - continua podendo
+        // ser entregue, senao empresas sem template ficariam travadas.
+        boolean hasPendingStep = workOrderStepRepository
+                .findByWorkOrderIdOrderByStepOrderAsc(workOrder.getId()).stream()
+                .anyMatch(step -> step.getStatus() != StepStatus.CONCLUIDA);
+
+        if (hasPendingStep) {
+            throw new BusinessRuleException(
+                    "Conclua todas as etapas antes de marcar a Ordem de Serviço como entregue");
+        }
+    }
+
+    // Mensagem explicando o que fazer, em vez de um "transicao invalida" seco:
+    // a fase comercial deixou de ser manual na V2.4 e o usuario precisa saber
+    // qual acao provoca aquele status.
+    private String explainRejectedManualTransition(WorkOrderStatus from, WorkOrderStatus to) {
+        if (WorkOrderStatusTransitions.isValid(from, to)) {
+            return switch (to) {
+                case ORCAMENTO_GERADO ->
+                        "O status muda sozinho ao criar o orçamento desta Ordem de Serviço";
+                case AGUARDANDO_APROVACAO, APROVADO, RECUSADO ->
+                        "O status muda sozinho ao registrar a aprovação ou recusa do orçamento";
+                default -> "Transição inválida: %s → %s".formatted(from, to);
+            };
+        }
+        return "Transição inválida: %s → %s".formatted(from, to);
     }
 
     @Transactional
