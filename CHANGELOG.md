@@ -3,6 +3,70 @@
 Todas as mudanças relevantes do projeto são registradas aqui.
 Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
+## [V2.5] — Workflow configurável e Checklist por Etapa
+
+Antecipa para a V2 o "Definir template de workflow padrão" que estava em
+"Configurações da Empresa" (V4, 🟡 Could). Motivo: não era só flexibilidade —
+sem isso o módulo de Etapas não funcionava para nenhuma empresa que não fosse
+a de demonstração, e o checklist do backlog já era especificado como
+"configurável por template de etapa", ou seja, dependia disto.
+
+### Corrigido
+- **Empresa sem workflow nunca teria etapa nenhuma.** Nada no código criava
+  um `workflow_template` — só o `seed.sql`. `WorkOrderService.create` procura
+  o template padrão, não acha, e a WorkOrder nasce sem etapas, para sempre.
+  O módulo de Etapas só funcionava porque o seed inseria "Padrão Marcenaria"
+  na mão. Agora o Admin cria o seu, e o primeiro template da empresa vira o
+  padrão automaticamente
+- **Excluir uma etapa de molde já usada quebrava com violação de FK.**
+  `work_order_steps.workflow_step_id` não tinha cláusula `ON DELETE`, então
+  qualquer exclusão de etapa (ou do template inteiro, via CASCADE) falhava se
+  alguma OS já a tivesse usado. Passa a ser `ON DELETE SET NULL`, mesma
+  solução aplicada a `budget_items.catalog_item_id` na V2.1 — a OS mantém
+  título e ordem (cópias próprias) e perde só o ponteiro de origem
+
+### Adicionado
+- Módulo de Workflow (`WorkflowController`, `WorkflowService`): Admin Empresa
+  cria, renomeia e exclui templates; adiciona, renomeia, reordena e remove
+  etapas; define os itens de checklist de cada etapa. Leitura liberada aos
+  demais papéis (Operador e Técnico precisam saber quais etapas existem),
+  escrita restrita a `ADMIN_EMPRESA`
+- Checklist por etapa em duas camadas: `workflow_step_checklist_items`
+  (molde) é **copiado** para `work_order_step_checklist_items` na criação da
+  WorkOrder. O Técnico marca/desmarca itens (com registro de quem e quando) e
+  pode acrescentar itens avulsos àquela OS — itens vindos do molde não podem
+  ser removidos de uma OS específica, para não esconder uma exigência que a
+  empresa definiu
+- `workflow_templates` e `workflow_steps` ganharam `uuid`: passaram a ser
+  expostos na API e a regra do projeto é que id sequencial nunca sai do
+  backend (mesma situação de `work_order_steps` na Sprint 4)
+- Índice parcial `uq_workflow_templates_single_default`: no máximo um
+  template padrão por empresa, já que é ele que a criação da WorkOrder
+  procura — dois tornariam a escolha arbitrária
+- Frontend: página `Workflow.jsx` (edição para Admin, somente-leitura com
+  aviso para os demais) e checklist no painel de etapas em `WorkOrders.jsx`,
+  com marcação, item avulso e indicação de quem marcou
+
+### Garantia mantida
+- Editar um molde **não** altera Ordens de Serviço já criadas. Etapas e
+  checklist são copiados na criação (`instantiateSteps` /
+  `instantiateChecklist`), mesmo princípio de snapshot de `budget_items`.
+  Verificado contra o sistema real: renomear uma etapa e excluir outra do
+  molde deixou a OS existente intacta, inclusive com a etapa que sumiu do
+  molde
+- Checklist de etapa `CONCLUIDA` não pode mais ser alterado, e nada de
+  checklist é editável fora de `APROVADO`/`EM_EXECUCAO` — as mesmas travas da
+  V2.4 valem aqui
+
+### Testado
+- 48 cenários no total (13 em `WorkOrderStepServiceTest`, +6 novos de
+  checklist: etapa concluída, antes da aprovação, registro de quem/quando ao
+  marcar e desmarcar, e a distinção entre item de molde e avulso na remoção)
+- Ciclo completo validado contra o sistema real: admin monta um workflow de
+  assistência técnica do zero (4 etapas + checklist), reordena, torna padrão,
+  uma OS nova nasce com essas etapas, e o Técnico marca itens e acrescenta um
+  avulso — tudo também pela interface, sem erro de console
+
 ## [V2.4] — Integridade do Fluxo
 
 Entrega não planejada no Kanban original: nasceu de uma revisão do fluxo

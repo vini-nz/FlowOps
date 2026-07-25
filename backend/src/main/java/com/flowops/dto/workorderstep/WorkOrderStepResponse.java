@@ -4,6 +4,7 @@ import com.flowops.entity.WorkOrderStep;
 import com.flowops.enums.StepStatus;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 public record WorkOrderStepResponse(
@@ -16,10 +17,11 @@ public record WorkOrderStepResponse(
         OffsetDateTime startedAt,
         OffsetDateTime completedAt,
         String notes,
+        List<StepChecklistItemResponse> checklistItems,
         OffsetDateTime createdAt,
         OffsetDateTime updatedAt
 ) {
-    public static WorkOrderStepResponse from(WorkOrderStep step) {
+    public static WorkOrderStepResponse from(WorkOrderStep step, List<StepChecklistItemResponse> checklistItems) {
         return new WorkOrderStepResponse(
                 step.getUuid(),
                 step.getStepOrder(),
@@ -30,6 +32,7 @@ public record WorkOrderStepResponse(
                 step.getStartedAt(),
                 step.getCompletedAt(),
                 step.getNotes(),
+                checklistItems,
                 step.getCreatedAt(),
                 step.getUpdatedAt()
         );

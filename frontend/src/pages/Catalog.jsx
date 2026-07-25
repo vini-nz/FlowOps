@@ -112,6 +112,7 @@ export default function Catalog() {
             <Link to="/clients" className="text-gray-500 hover:text-flowops-700">Clientes</Link>
             <Link to="/work-orders" className="text-gray-500 hover:text-flowops-700">WorkOrders</Link>
             <span className="font-medium text-flowops-700">Catálogo</span>
+            <Link to="/workflow" className="text-gray-500 hover:text-flowops-700">Workflow</Link>
           </nav>
         </div>
         <button

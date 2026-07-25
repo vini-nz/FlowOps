@@ -21,11 +21,23 @@ VALUES (1, 'Cliente Demonstração', 'cliente@exemplo.com', '(44) 99999-0000');
 INSERT INTO workflow_templates (company_id, name, is_default)
 VALUES (1, 'Padrão Marcenaria', true);
 
+-- Este molde é apenas um exemplo de marcenaria: desde a V2.5 o Admin Empresa
+-- pode renomear, reordenar, remover e criar suas próprias etapas e checklists
+-- pela tela de Workflow — nada aqui é fixo no sistema.
 INSERT INTO workflow_steps (workflow_template_id, step_order, title)
 VALUES
     (1, 1, 'Produção'),
     (1, 2, 'Acabamento'),
     (1, 3, 'Instalação');
+
+INSERT INTO workflow_step_checklist_items (workflow_step_id, item_order, description)
+VALUES
+    (1, 1, 'Conferir medidas com o projeto'),
+    (1, 2, 'Separar material necessário'),
+    (2, 1, 'Lixar superfícies'),
+    (2, 2, 'Aplicar acabamento'),
+    (3, 1, 'Conferir nivelamento'),
+    (3, 2, 'Entregar manual de conservação ao cliente');
 
 INSERT INTO work_orders (company_id, client_id, workflow_template_id, title, description, status, priority, created_by_id, assigned_to_id)
 VALUES
@@ -37,3 +49,15 @@ VALUES
     (1, 1, 1, 'Produção', 'CONCLUIDA', 3),
     (1, 2, 2, 'Acabamento', 'EM_ANDAMENTO', 3),
     (1, 3, 3, 'Instalação', 'PENDENTE', NULL);
+
+-- Cópia do checklist do molde para esta OS (é o que WorkOrderService faz na
+-- criação). A etapa concluída já vem com os itens marcados.
+INSERT INTO work_order_step_checklist_items
+    (work_order_step_id, workflow_checklist_item_id, item_order, description, is_done, done_at, done_by_id)
+VALUES
+    (1, 1, 1, 'Conferir medidas com o projeto', true, now(), 3),
+    (1, 2, 2, 'Separar material necessário', true, now(), 3),
+    (2, 3, 1, 'Lixar superfícies', true, now(), 3),
+    (2, 4, 2, 'Aplicar acabamento', false, NULL, NULL),
+    (3, 5, 1, 'Conferir nivelamento', false, NULL, NULL),
+    (3, 6, 2, 'Entregar manual de conservação ao cliente', false, NULL, NULL);

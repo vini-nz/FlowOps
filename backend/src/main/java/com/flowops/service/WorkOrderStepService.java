@@ -1,17 +1,20 @@
 package com.flowops.service;
 
+import com.flowops.dto.workorderstep.StepChecklistItemResponse;
 import com.flowops.dto.workorderstep.WorkOrderStepResponse;
 import com.flowops.dto.workorderstep.WorkOrderStepStatusUpdateRequest;
 import com.flowops.entity.DomainEvent;
 import com.flowops.entity.User;
 import com.flowops.entity.WorkOrder;
 import com.flowops.entity.WorkOrderStep;
+import com.flowops.entity.WorkOrderStepChecklistItem;
 import com.flowops.enums.StepStatus;
 import com.flowops.enums.WorkOrderStatus;
 import com.flowops.exception.BusinessRuleException;
 import com.flowops.exception.ResourceNotFoundException;
 import com.flowops.repository.DomainEventRepository;
 import com.flowops.repository.WorkOrderRepository;
+import com.flowops.repository.WorkOrderStepChecklistItemRepository;
 import com.flowops.repository.WorkOrderStepRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -29,14 +32,91 @@ public class WorkOrderStepService {
     private final WorkOrderRepository workOrderRepository;
     private final DomainEventRepository domainEventRepository;
     private final WorkOrderService workOrderService;
+    private final WorkOrderStepChecklistItemRepository checklistItemRepository;
 
     @Transactional(readOnly = true)
     public List<WorkOrderStepResponse> list(Long companyId, UUID workOrderUuid) {
         WorkOrder workOrder = findOwnedWorkOrderOrThrow(companyId, workOrderUuid);
         return workOrderStepRepository.findByWorkOrderIdOrderByStepOrderAsc(workOrder.getId())
                 .stream()
-                .map(WorkOrderStepResponse::from)
+                .map(this::toResponse)
                 .toList();
+    }
+
+    /**
+     * Marca ou desmarca um item de checklist (V2.5). Não mexe no status da
+     * etapa — o critério de aceitação do backlog é explícito quanto a isso:
+     * "criar e marcar itens de checklist sem mudar status".
+     */
+    @Transactional
+    public WorkOrderStepResponse toggleChecklistItem(
+            Long companyId, UUID workOrderUuid, UUID stepUuid, UUID itemUuid, boolean done, User actor) {
+        WorkOrder workOrder = findOwnedWorkOrderOrThrow(companyId, workOrderUuid);
+        WorkOrderStep step = findStepOrThrow(workOrder, stepUuid);
+        assertWorkOrderIsExecutable(workOrder);
+        assertStepIsOpen(step);
+
+        WorkOrderStepChecklistItem item = checklistItemRepository
+                .findByUuidAndWorkOrderStepId(itemUuid, step.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Item de checklist não encontrado"));
+
+        item.setDone(done);
+        item.setDoneAt(done ? OffsetDateTime.now() : null);
+        item.setDoneBy(done ? actor : null);
+        checklistItemRepository.save(item);
+
+        recordEvent(workOrder, done ? "CHECKLIST_ITEM_MARCADO" : "CHECKLIST_ITEM_DESMARCADO", actor,
+                "{\"etapa\":\"%s\",\"item\":\"%s\"}".formatted(step.getTitle(), item.getDescription()));
+
+        return toResponse(step);
+    }
+
+    /** Item avulso, específico desta OS — não volta para o molde. */
+    @Transactional
+    public WorkOrderStepResponse addChecklistItem(
+            Long companyId, UUID workOrderUuid, UUID stepUuid, String description, User actor) {
+        WorkOrder workOrder = findOwnedWorkOrderOrThrow(companyId, workOrderUuid);
+        WorkOrderStep step = findStepOrThrow(workOrder, stepUuid);
+        assertWorkOrderIsExecutable(workOrder);
+        assertStepIsOpen(step);
+
+        WorkOrderStepChecklistItem item = new WorkOrderStepChecklistItem();
+        item.setWorkOrderStep(step);
+        item.setDescription(description);
+        item.setItemOrder(checklistItemRepository
+                .findFirstByWorkOrderStepIdOrderByItemOrderDesc(step.getId())
+                .map(last -> last.getItemOrder() + 1)
+                .orElse(1));
+        checklistItemRepository.save(item);
+
+        recordEvent(workOrder, "CHECKLIST_ITEM_ADICIONADO", actor,
+                "{\"etapa\":\"%s\",\"item\":\"%s\"}".formatted(step.getTitle(), description));
+
+        return toResponse(step);
+    }
+
+    /** Só itens avulsos podem sair — remover um item do molde numa OS
+     *  específica esconderia uma exigência que a empresa definiu. */
+    @Transactional
+    public WorkOrderStepResponse removeChecklistItem(
+            Long companyId, UUID workOrderUuid, UUID stepUuid, UUID itemUuid, User actor) {
+        WorkOrder workOrder = findOwnedWorkOrderOrThrow(companyId, workOrderUuid);
+        WorkOrderStep step = findStepOrThrow(workOrder, stepUuid);
+        assertWorkOrderIsExecutable(workOrder);
+        assertStepIsOpen(step);
+
+        WorkOrderStepChecklistItem item = checklistItemRepository
+                .findByUuidAndWorkOrderStepId(itemUuid, step.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Item de checklist não encontrado"));
+
+        if (item.getWorkflowChecklistItem() != null) {
+            throw new BusinessRuleException(
+                    "Este item vem do workflow da empresa e não pode ser removido de uma Ordem de Serviço");
+        }
+
+        checklistItemRepository.delete(item);
+
+        return toResponse(step);
     }
 
     @Transactional
@@ -99,12 +179,34 @@ public class WorkOrderStepService {
                     "{\"etapa\":\"%s\"}".formatted(saved.getTitle()));
         }
 
-        return WorkOrderStepResponse.from(saved);
+        return toResponse(saved);
     }
 
     private WorkOrder findOwnedWorkOrderOrThrow(Long companyId, UUID workOrderUuid) {
         return workOrderRepository.findByUuidAndCompanyIdAndDeletedAtIsNull(workOrderUuid, companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("WorkOrder não encontrada"));
+    }
+
+    private WorkOrderStep findStepOrThrow(WorkOrder workOrder, UUID stepUuid) {
+        return workOrderStepRepository.findByUuidAndWorkOrderId(stepUuid, workOrder.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Etapa não encontrada"));
+    }
+
+    // CONCLUIDA e terminal para a etapa (StepStatusTransitions) - o checklist
+    // segue a mesma regra, senao seria possivel reescrever a evidencia de um
+    // trabalho ja dado por encerrado.
+    private void assertStepIsOpen(WorkOrderStep step) {
+        if (step.getStatus() == StepStatus.CONCLUIDA) {
+            throw new BusinessRuleException("Etapa concluída — o checklist não pode mais ser alterado");
+        }
+    }
+
+    private WorkOrderStepResponse toResponse(WorkOrderStep step) {
+        List<StepChecklistItemResponse> checklist =
+                checklistItemRepository.findByWorkOrderStepIdOrderByItemOrderAsc(step.getId()).stream()
+                        .map(StepChecklistItemResponse::from)
+                        .toList();
+        return WorkOrderStepResponse.from(step, checklist);
     }
 
     private void assertWorkOrderIsExecutable(WorkOrder workOrder) {

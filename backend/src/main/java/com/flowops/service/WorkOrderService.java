@@ -8,6 +8,8 @@ import com.flowops.entity.DomainEvent;
 import com.flowops.entity.User;
 import com.flowops.entity.WorkOrder;
 import com.flowops.entity.WorkOrderStep;
+import com.flowops.entity.WorkOrderStepChecklistItem;
+import com.flowops.entity.WorkflowStep;
 import com.flowops.entity.WorkflowTemplate;
 import com.flowops.enums.Priority;
 import com.flowops.enums.StepStatus;
@@ -18,7 +20,9 @@ import com.flowops.repository.ClientRepository;
 import com.flowops.repository.DomainEventRepository;
 import com.flowops.repository.UserRepository;
 import com.flowops.repository.WorkOrderRepository;
+import com.flowops.repository.WorkOrderStepChecklistItemRepository;
 import com.flowops.repository.WorkOrderStepRepository;
+import com.flowops.repository.WorkflowStepChecklistItemRepository;
 import com.flowops.repository.WorkflowStepRepository;
 import com.flowops.repository.WorkflowTemplateRepository;
 import lombok.RequiredArgsConstructor;
@@ -40,6 +44,8 @@ public class WorkOrderService {
     private final WorkflowTemplateRepository workflowTemplateRepository;
     private final WorkflowStepRepository workflowStepRepository;
     private final WorkOrderStepRepository workOrderStepRepository;
+    private final WorkflowStepChecklistItemRepository workflowStepChecklistItemRepository;
+    private final WorkOrderStepChecklistItemRepository workOrderStepChecklistItemRepository;
 
     @Transactional(readOnly = true)
     public Page<WorkOrderResponse> list(Long companyId, WorkOrderStatus status, Pageable pageable) {
@@ -102,7 +108,27 @@ public class WorkOrderService {
                     step.setWorkflowStep(workflowStep);
                     step.setStepOrder(workflowStep.getStepOrder());
                     step.setTitle(workflowStep.getTitle());
-                    workOrderStepRepository.save(step);
+                    WorkOrderStep savedStep = workOrderStepRepository.save(step);
+
+                    instantiateChecklist(workflowStep, savedStep);
+                });
+    }
+
+    /**
+     * Copia o checklist do molde para a etapa concreta (V2.5). É cópia, não
+     * referência: renomear ou excluir um item no molde depois não pode mudar
+     * o que o Técnico já viu ou marcou naquela OS — mesmo princípio do
+     * snapshot de {@code budget_items} (ver docs/architecture.md).
+     */
+    private void instantiateChecklist(WorkflowStep workflowStep, WorkOrderStep workOrderStep) {
+        workflowStepChecklistItemRepository.findByWorkflowStepIdOrderByItemOrderAsc(workflowStep.getId())
+                .forEach(templateItem -> {
+                    WorkOrderStepChecklistItem item = new WorkOrderStepChecklistItem();
+                    item.setWorkOrderStep(workOrderStep);
+                    item.setWorkflowChecklistItem(templateItem);
+                    item.setItemOrder(templateItem.getItemOrder());
+                    item.setDescription(templateItem.getDescription());
+                    workOrderStepChecklistItemRepository.save(item);
                 });
     }
 

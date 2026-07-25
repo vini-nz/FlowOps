@@ -180,6 +180,61 @@ integridade, ambas com `409`:
 Iniciar a primeira etapa move a WorkOrder de `APROVADO` para `EM_EXECUCAO`
 automaticamente.
 
+### Checklist da etapa
+
+A resposta da etapa traz `checklistItems`, com `fromTemplate` indicando se o
+item veio do molde da empresa ou foi criado avulso nesta OS.
+
+| Método | Rota | Descrição |
+|---|---|---|
+| `PATCH` | `.../steps/{stepUuid}/checklist/{itemUuid}` | Marca/desmarca (`{ "done": true }`), registrando quem e quando |
+| `POST` | `.../steps/{stepUuid}/checklist` | Acrescenta item avulso a esta OS |
+| `DELETE` | `.../steps/{stepUuid}/checklist/{itemUuid}` | Remove item — **só avulsos** |
+
+Mesmas permissões de "Atualizar Etapas" (`ADMIN_EMPRESA`, `OPERADOR`,
+`TECNICO`) e mesmas travas: `409` se a WorkOrder não estiver em
+`APROVADO`/`EM_EXECUCAO`, ou se a etapa já estiver `CONCLUIDA`. Remover um
+item vindo do molde retorna `409` — esconderia numa OS uma exigência que a
+empresa definiu; para isso, altere o workflow.
+
+## Workflow (moldes de etapa)
+
+Define quais etapas — e quais itens de checklist — uma WorkOrder nova recebe.
+Escrita restrita a `ADMIN_EMPRESA`; leitura aberta aos demais papéis.
+
+| Método | Rota | Descrição |
+|---|---|---|
+| `GET` | `/workflows` | Lista os workflows da empresa, com etapas e checklist |
+| `GET` | `/workflows/{uuid}` | Detalhe de um workflow |
+| `POST` | `/workflows` | Cria um workflow. O primeiro da empresa vira padrão automaticamente |
+| `PUT` | `/workflows/{uuid}` | Renomeia e/ou define como padrão |
+| `DELETE` | `/workflows/{uuid}` | Exclui o workflow e suas etapas |
+| `POST` | `/workflows/{uuid}/steps` | Acrescenta uma etapa ao fim |
+| `PUT` | `/workflows/{uuid}/steps/{stepUuid}` | Renomeia a etapa |
+| `DELETE` | `/workflows/{uuid}/steps/{stepUuid}` | Remove a etapa e reordena as demais |
+| `PATCH` | `/workflows/{uuid}/steps/{stepUuid}/move?direction=up\|down` | Move a etapa uma posição |
+| `POST` | `/workflows/{uuid}/steps/{stepUuid}/checklist` | Acrescenta item de checklist ao molde |
+| `DELETE` | `/workflows/{uuid}/steps/{stepUuid}/checklist/{itemUuid}` | Remove item do molde |
+
+Toda escrita devolve o workflow inteiro atualizado, para a tela não precisar
+de um `GET` extra.
+
+**Request de workflow:**
+```json
+{ "name": "Assistência Técnica", "isDefault": true }
+```
+`isDefault: false` num workflow que já é o padrão retorna `409` — defina
+outro como padrão em vez de deixar a empresa sem nenhum. Excluir o padrão
+quando existem outros workflows também retorna `409`, pelo mesmo motivo:
+sem padrão, as WorkOrders voltariam a nascer sem etapas.
+
+**Request de etapa:** `{ "title": "Diagnóstico" }`
+**Request de item de checklist:** `{ "description": "Testar alimentação" }`
+
+**Editar um workflow nunca altera Ordens de Serviço existentes.** Etapas e
+checklist são copiados no momento da criação da WorkOrder — ver
+`docs/architecture.md`.
+
 ## Catálogo
 
 | Método | Rota | Descrição |

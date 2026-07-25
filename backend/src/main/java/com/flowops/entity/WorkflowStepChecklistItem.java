@@ -9,16 +9,16 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /**
- * Molde de workflow da empresa (V2.5). Define quais etapas uma WorkOrder
- * nova recebe. Editar um molde nunca altera OS já criadas — as etapas são
- * copiadas em {@code WorkOrderService.create}, não referenciadas.
+ * Item de checklist definido no molde da etapa (V2.5). Copiado para
+ * {@link WorkOrderStepChecklistItem} na criação da WorkOrder — editar aqui
+ * não altera OS em andamento.
  */
 @Entity
-@Table(name = "workflow_templates")
+@Table(name = "workflow_step_checklist_items")
 @Getter
 @Setter
 @NoArgsConstructor
-public class WorkflowTemplate {
+public class WorkflowStepChecklistItem {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -28,14 +28,14 @@ public class WorkflowTemplate {
     private UUID uuid;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "company_id", nullable = false)
-    private Company company;
+    @JoinColumn(name = "workflow_step_id", nullable = false)
+    private WorkflowStep workflowStep;
 
-    @Column(nullable = false, length = 100)
-    private String name;
+    @Column(name = "item_order", nullable = false)
+    private Integer itemOrder;
 
-    @Column(name = "is_default", nullable = false)
-    private boolean isDefault = false;
+    @Column(nullable = false, length = 200)
+    private String description;
 
     @Column(name = "created_at", nullable = false, insertable = false, updatable = false)
     private OffsetDateTime createdAt;

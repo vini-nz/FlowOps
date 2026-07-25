@@ -156,6 +156,8 @@ export default function WorkOrders() {
   const [timelineByWorkOrder, setTimelineByWorkOrder] = useState({})
   const [timelineLoading, setTimelineLoading] = useState(false)
 
+  const [checklistDraft, setChecklistDraft] = useState({})
+
   function loadWorkOrders() {
     setLoading(true)
     const params = { page, size: 10, sort: 'createdAt,desc' }
@@ -280,6 +282,41 @@ export default function WorkOrders() {
       loadSteps(workOrderUuid)
     } catch (err) {
       setError(err.response?.data?.message || 'Não foi possível salvar a observação.')
+    }
+  }
+
+  async function handleChecklistToggle(workOrderUuid, step, item) {
+    try {
+      await api.patch(
+        `/work-orders/${workOrderUuid}/steps/${step.uuid}/checklist/${item.uuid}`,
+        { done: !item.done }
+      )
+      loadSteps(workOrderUuid)
+    } catch (err) {
+      setError(err.response?.data?.message || 'Não foi possível atualizar o item de checklist.')
+    }
+  }
+
+  async function handleChecklistAdd(workOrderUuid, step) {
+    const key = step.uuid
+    const description = (checklistDraft[key] || '').trim()
+    if (!description) return
+
+    try {
+      await api.post(`/work-orders/${workOrderUuid}/steps/${step.uuid}/checklist`, { description })
+      setChecklistDraft((prev) => ({ ...prev, [key]: '' }))
+      loadSteps(workOrderUuid)
+    } catch (err) {
+      setError(err.response?.data?.message || 'Não foi possível adicionar o item.')
+    }
+  }
+
+  async function handleChecklistRemove(workOrderUuid, step, item) {
+    try {
+      await api.delete(`/work-orders/${workOrderUuid}/steps/${step.uuid}/checklist/${item.uuid}`)
+      loadSteps(workOrderUuid)
+    } catch (err) {
+      setError(err.response?.data?.message || 'Não foi possível remover o item.')
     }
   }
 
@@ -421,6 +458,7 @@ export default function WorkOrders() {
             <Link to="/clients" className="text-gray-500 hover:text-flowops-700">Clientes</Link>
             <span className="font-medium text-flowops-700">WorkOrders</span>
             <Link to="/catalog" className="text-gray-500 hover:text-flowops-700">Catálogo</Link>
+            <Link to="/workflow" className="text-gray-500 hover:text-flowops-700">Workflow</Link>
           </nav>
         </div>
         <button
@@ -861,6 +899,70 @@ export default function WorkOrders() {
                                   </button>
                                 )
                               })}
+                            </div>
+                          )}
+
+                          {step.checklistItems?.length > 0 && (
+                            <ul className="mt-2 space-y-1">
+                              {step.checklistItems.map((item) => {
+                                // Etapa concluida e terminal: o checklist vira
+                                // historico, igual a regra do backend.
+                                const editable = isExecutable(wo) && step.status !== 'CONCLUIDA'
+                                return (
+                                  <li key={item.uuid} className="flex items-center gap-2 text-xs">
+                                    <input
+                                      type="checkbox"
+                                      checked={item.done}
+                                      disabled={!editable}
+                                      onChange={() => handleChecklistToggle(wo.uuid, step, item)}
+                                      className="h-3.5 w-3.5 rounded border-gray-300 text-flowops-600 focus:ring-flowops-600 disabled:cursor-not-allowed"
+                                    />
+                                    <span className={item.done ? 'text-gray-400 line-through' : 'text-gray-700'}>
+                                      {item.description}
+                                    </span>
+                                    {!item.fromTemplate && (
+                                      <span
+                                        title="Item avulso, criado nesta Ordem de Serviço"
+                                        className="rounded bg-gray-100 px-1 text-[10px] text-gray-500"
+                                      >
+                                        avulso
+                                      </span>
+                                    )}
+                                    {item.done && item.doneByName && (
+                                      <span className="text-[10px] text-gray-400">
+                                        por {item.doneByName}
+                                      </span>
+                                    )}
+                                    {editable && !item.fromTemplate && (
+                                      <button
+                                        onClick={() => handleChecklistRemove(wo.uuid, step, item)}
+                                        className="text-red-600 hover:underline"
+                                      >
+                                        remover
+                                      </button>
+                                    )}
+                                  </li>
+                                )
+                              })}
+                            </ul>
+                          )}
+
+                          {isExecutable(wo) && step.status !== 'CONCLUIDA' && (
+                            <div className="mt-2 flex gap-2">
+                              <input
+                                value={checklistDraft[step.uuid] || ''}
+                                onChange={(e) =>
+                                  setChecklistDraft((prev) => ({ ...prev, [step.uuid]: e.target.value }))
+                                }
+                                placeholder="Novo item de checklist..."
+                                className="flex-1 rounded border border-gray-300 px-2 py-1 text-xs focus:border-flowops-600 focus:outline-none"
+                              />
+                              <button
+                                onClick={() => handleChecklistAdd(wo.uuid, step)}
+                                className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-100"
+                              >
+                                Adicionar
+                              </button>
                             </div>
                           )}
 

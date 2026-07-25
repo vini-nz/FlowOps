@@ -282,6 +282,45 @@ default para `clock_timestamp()`, que resolveria na origem, mas alteraria o
 significado da coluna em dados já gravados e não ajudaria em eventos
 inseridos no mesmo microssegundo.
 
+## Workflow é molde, WorkOrder é instância (V2.5)
+
+O schema já previa `workflow_templates`/`workflow_steps` por empresa desde a
+Etapa 2.2, e `WorkOrderService.create` já instanciava as etapas a partir do
+template padrão desde a Sprint 4 — mas nada no código criava um template.
+Só o `seed.sql`. Na prática, o "Workflow é configurável por empresa" que a
+documentação de Negócio e Domínio afirmava não existia: uma empresa sem
+linha em `workflow_templates` teria WorkOrders nascendo sem nenhuma etapa,
+sem qualquer pista do porquê. A V2.5 expôs o CRUD que faltava.
+
+**A relação entre molde e instância é de cópia, não de referência.**
+`instantiateSteps` copia `title` e `step_order` para `work_order_steps`, e
+`instantiateChecklist` copia `description` e `item_order` para
+`work_order_step_checklist_items`. Renomear, reordenar ou excluir algo no
+molde depois disso não toca em nenhuma OS já criada — o que é a única
+semântica defensável: um Técnico não pode ver mudar, sob os pés dele, o
+item que acabou de marcar; e uma OS entregue precisa continuar mostrando o
+que foi de fato exigido na época. É o mesmo princípio já aplicado a
+`budget_items` na V2.1.
+
+As colunas `workflow_step_id` e `workflow_checklist_item_id` sobrevivem
+apenas como rastreabilidade ("de qual molde isto veio"), com
+`ON DELETE SET NULL`. Sem isso, a partir do momento em que o Admin pode
+excluir uma etapa, qualquer exclusão de etapa já usada falharia por violação
+de FK — e excluir um template inteiro cascatearia para suas etapas e bateria
+na mesma parede.
+
+Duas consequências desenhadas de propósito:
+
+- **No máximo um template padrão por empresa**, garantido por índice parcial
+  (`uq_workflow_templates_single_default`), porque é ele que a criação da
+  WorkOrder procura — dois tornariam a escolha arbitrária. Pelo mesmo motivo
+  o serviço impede remover o padrão sem eleger outro, e o primeiro template
+  criado vira padrão sozinho.
+- **Item de checklist vindo do molde não pode ser removido de uma OS.** O
+  Técnico pode acrescentar itens avulsos àquela OS (o que o backlog pedia:
+  "criar e marcar itens de checklist"), mas apagar um item que a empresa
+  definiu esconderia uma exigência — para isso, muda-se o workflow.
+
 ## Geração de PDF: OpenPDF em vez de HTML→PDF (V2.2)
 
 `BudgetPdfService` monta o documento diretamente com a API de baixo nível do

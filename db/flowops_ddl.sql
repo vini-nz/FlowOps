@@ -102,6 +102,10 @@ CREATE TRIGGER trg_clients_updated_at
 
 CREATE TABLE workflow_templates (
     id            BIGSERIAL PRIMARY KEY,
+    -- uuid adicionado na V2.5, quando o workflow deixou de ser configurado
+    -- apenas por seed e passou a ter CRUD exposto na API (mesma regra de
+    -- clients/work_orders: id sequencial nunca sai do backend).
+    uuid          UUID NOT NULL UNIQUE DEFAULT gen_random_uuid(),
     company_id    BIGINT NOT NULL REFERENCES companies(id),
     name          VARCHAR(100) NOT NULL,
     is_default    BOOLEAN NOT NULL DEFAULT FALSE,
@@ -110,6 +114,12 @@ CREATE TABLE workflow_templates (
 );
 
 CREATE INDEX idx_workflow_templates_company_id ON workflow_templates(company_id);
+
+-- No máximo um template padrão por empresa: é ele que WorkOrderService.create
+-- procura para instanciar as etapas, e dois padrões tornariam a escolha
+-- arbitrária. Parcial porque só restringe as linhas com is_default = TRUE.
+CREATE UNIQUE INDEX uq_workflow_templates_single_default
+    ON workflow_templates(company_id) WHERE is_default = TRUE;
 
 CREATE TRIGGER trg_workflow_templates_updated_at
     BEFORE UPDATE ON workflow_templates
@@ -121,14 +131,46 @@ CREATE TRIGGER trg_workflow_templates_updated_at
 
 CREATE TABLE workflow_steps (
     id                      BIGSERIAL PRIMARY KEY,
+    uuid                    UUID NOT NULL UNIQUE DEFAULT gen_random_uuid(),
     workflow_template_id    BIGINT NOT NULL REFERENCES workflow_templates(id) ON DELETE CASCADE,
     step_order              INT NOT NULL,
     title                   VARCHAR(100) NOT NULL,
+    created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
 
     CONSTRAINT uq_workflow_step_order UNIQUE (workflow_template_id, step_order)
 );
 
 CREATE INDEX idx_workflow_steps_template_id ON workflow_steps(workflow_template_id);
+
+CREATE TRIGGER trg_workflow_steps_updated_at
+    BEFORE UPDATE ON workflow_steps
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- ----------------------------------------------------------------------------
+-- Itens de checklist definidos no molde da etapa (V2.5). São copiados para
+-- work_order_step_checklist_items quando a WorkOrder é criada — editar o
+-- molde nunca altera uma OS em andamento (mesmo princípio do snapshot de
+-- budget_items, ver docs/architecture.md).
+-- ----------------------------------------------------------------------------
+
+CREATE TABLE workflow_step_checklist_items (
+    id                  BIGSERIAL PRIMARY KEY,
+    uuid                UUID NOT NULL UNIQUE DEFAULT gen_random_uuid(),
+    workflow_step_id    BIGINT NOT NULL REFERENCES workflow_steps(id) ON DELETE CASCADE,
+    item_order          INT NOT NULL,
+    description         VARCHAR(200) NOT NULL,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+    CONSTRAINT uq_workflow_step_checklist_order UNIQUE (workflow_step_id, item_order)
+);
+
+CREATE INDEX idx_workflow_step_checklist_step_id ON workflow_step_checklist_items(workflow_step_id);
+
+CREATE TRIGGER trg_workflow_step_checklist_items_updated_at
+    BEFORE UPDATE ON workflow_step_checklist_items
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- ----------------------------------------------------------------------------
 -- WorkOrder — aggregate root do domínio (D-02)
@@ -192,7 +234,12 @@ CREATE TABLE work_order_steps (
     id                  BIGSERIAL PRIMARY KEY,
     uuid                UUID NOT NULL UNIQUE DEFAULT gen_random_uuid(),
     work_order_id       BIGINT NOT NULL REFERENCES work_orders(id) ON DELETE CASCADE,
-    workflow_step_id    BIGINT REFERENCES workflow_steps(id),
+    -- SET NULL (V2.5): a partir do momento em que o admin pode excluir uma
+    -- etapa do molde, um RESTRICT aqui impediria excluir qualquer etapa já
+    -- usada por alguma OS. A instância não perde nada de essencial — title e
+    -- step_order são cópias próprias; só o ponteiro de origem some. Mesma
+    -- solução aplicada a budget_items.catalog_item_id na V2.1.
+    workflow_step_id    BIGINT REFERENCES workflow_steps(id) ON DELETE SET NULL,
 
     step_order          INT NOT NULL,
     title                VARCHAR(100) NOT NULL,
@@ -215,6 +262,40 @@ CREATE INDEX idx_work_order_steps_status ON work_order_steps(status);
 
 CREATE TRIGGER trg_work_order_steps_updated_at
     BEFORE UPDATE ON work_order_steps
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- ----------------------------------------------------------------------------
+-- Checklist de uma etapa concreta (V2.5). A maioria dos itens nasce como
+-- cópia do molde (workflow_checklist_item_id preenchido); um item avulso,
+-- criado pelo Técnico durante a execução daquela OS, tem essa coluna NULL.
+-- ----------------------------------------------------------------------------
+
+CREATE TABLE work_order_step_checklist_items (
+    id                          BIGSERIAL PRIMARY KEY,
+    uuid                        UUID NOT NULL UNIQUE DEFAULT gen_random_uuid(),
+    work_order_step_id          BIGINT NOT NULL REFERENCES work_order_steps(id) ON DELETE CASCADE,
+    -- Só rastreabilidade ("de qual item de molde isto veio"). SET NULL pelo
+    -- mesmo motivo de work_order_steps.workflow_step_id acima.
+    workflow_checklist_item_id  BIGINT REFERENCES workflow_step_checklist_items(id) ON DELETE SET NULL,
+
+    item_order                  INT NOT NULL,
+    description                 VARCHAR(200) NOT NULL,
+    is_done                     BOOLEAN NOT NULL DEFAULT FALSE,
+    done_at                     TIMESTAMPTZ,
+    done_by_id                  BIGINT REFERENCES users(id),
+
+    created_at                  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at                  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Sem UNIQUE em (work_order_step_id, item_order) de proposito: itens avulsos
+-- sao acrescentados ao fim durante a execucao, e uma constraint de unicidade
+-- so criaria falha de concorrencia num campo que e mera ordem de exibicao.
+CREATE INDEX idx_wo_step_checklist_step_id
+    ON work_order_step_checklist_items(work_order_step_id, item_order);
+
+CREATE TRIGGER trg_wo_step_checklist_items_updated_at
+    BEFORE UPDATE ON work_order_step_checklist_items
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- ============================================================================
