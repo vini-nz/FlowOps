@@ -240,6 +240,48 @@ preço de tabela atual. `catalog_item_id` é mantido (com `ON DELETE SET
 NULL`) só para rastreabilidade — "de qual item de catálogo isso veio" —
 nunca para recalcular valores.
 
+## Contrato de `domain_events.payload` (V2.3)
+
+Até a V2.2 o payload era gravado por três Services sem contrato escrito —
+item registrado no Épico Dívida Técnica com a nota "documentar antes de
+Notificações/Automações dependerem dele". A Timeline é o primeiro consumidor
+real, então o contrato passa a valer a partir daqui:
+
+| `event_type` | `payload` | Gravado por |
+|---|---|---|
+| `WORKORDER_CRIADA` | `null` | `WorkOrderService.create` |
+| `STATUS_ALTERADO` | `{"de": "<WorkOrderStatus>", "para": "<WorkOrderStatus>"}` | `WorkOrderService.updateStatus` |
+| `RESPONSAVEL_ATRIBUIDO` | `{"assignedTo": "<nome>"}` ou `{"assignedTo": null}` | `WorkOrderService.assign` |
+| `ETAPA_STATUS_ALTERADA` | `{"etapa": "<título>", "de": "<StepStatus>", "para": "<StepStatus>"}` | `WorkOrderStepService.updateStatus` |
+| `ETAPA_OBSERVACAO_REGISTRADA` | `{"etapa": "<título>"}` | `WorkOrderStepService.updateStatus` |
+| `ORCAMENTO_CRIADO` | `null` | `BudgetService.create` |
+| `ITEM_ADICIONADO` | `{"description": "<descrição>", "subtotal": <número>}` | `BudgetService.addItem` |
+| `ITEM_REMOVIDO` | `{"description": "<descrição>"}` | `BudgetService.removeItem` |
+| `ORCAMENTO_APROVADO` / `ORCAMENTO_RECUSADO` | `null` | `BudgetService.updateStatus` |
+
+`TimelineDescriptionFormatter` é o **único** ponto do sistema que lê esse
+payload. Consumidores futuros (Notificações, Automações) devem reusá-lo em
+vez de reimplementar a leitura — duas interpretações do mesmo payload
+divergem com o tempo e o erro só aparece na tela do usuário.
+`TimelineDescriptionFormatterTest` é a validação executável deste contrato:
+mudar o formato do payload em um Service sem atualizar o formatter quebra o
+teste. Tipo desconhecido ou payload malformado cai em fallback (nunca lança),
+porque um evento de auditoria antigo não pode derrubar a tela inteira.
+
+## Ordenação da Timeline desempata por `id`, não só por `occurred_at`
+
+`occurred_at` usa `DEFAULT now()`, e no PostgreSQL `now()` devolve o horário
+de **início da transação**, não o do `INSERT`. Vários eventos gravados na
+mesma transação recebem timestamps idênticos — `BudgetService.updateStatus`,
+por exemplo, grava duas transições de status e o `ORCAMENTO_APROVADO` de uma
+vez. Ordenar apenas por `occurred_at` deixava a ordem entre eles indefinida,
+e na prática a Timeline exibia a aprovação **antes** das transições que a
+causaram. A consulta ordena por `occurred_at, id` (`id` é `BIGSERIAL`,
+portanto preserva a ordem real de inserção). Alternativa descartada: trocar o
+default para `clock_timestamp()`, que resolveria na origem, mas alteraria o
+significado da coluna em dados já gravados e não ajudaria em eventos
+inseridos no mesmo microssegundo.
+
 ## Geração de PDF: OpenPDF em vez de HTML→PDF (V2.2)
 
 `BudgetPdfService` monta o documento diretamente com a API de baixo nível do

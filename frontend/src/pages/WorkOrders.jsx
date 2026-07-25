@@ -118,6 +118,10 @@ export default function WorkOrders() {
   const [itemDraft, setItemDraft] = useState(emptyItemDraft)
   const [budgetActionError, setBudgetActionError] = useState('')
 
+  const [timelineExpandedUuid, setTimelineExpandedUuid] = useState(null)
+  const [timelineByWorkOrder, setTimelineByWorkOrder] = useState({})
+  const [timelineLoading, setTimelineLoading] = useState(false)
+
   function loadWorkOrders() {
     setLoading(true)
     const params = { page, size: 10, sort: 'createdAt,desc' }
@@ -323,6 +327,27 @@ export default function WorkOrders() {
     } catch (err) {
       setBudgetActionError(err.response?.data?.message || 'Não foi possível registrar a decisão.')
     }
+  }
+
+  function toggleTimeline(workOrder) {
+    if (timelineExpandedUuid === workOrder.uuid) {
+      setTimelineExpandedUuid(null)
+      return
+    }
+    setTimelineExpandedUuid(workOrder.uuid)
+    // Recarrega sempre: a timeline muda a cada acao feita na propria tela
+    // (status, orcamento, etapa), entao cache aqui mostraria historico velho.
+    loadTimeline(workOrder.uuid)
+  }
+
+  function loadTimeline(workOrderUuid) {
+    setTimelineLoading(true)
+    api.get(`/work-orders/${workOrderUuid}/timeline`)
+      .then((response) => {
+        setTimelineByWorkOrder((prev) => ({ ...prev, [workOrderUuid]: response.data }))
+      })
+      .catch(() => setError('Não foi possível carregar a timeline.'))
+      .finally(() => setTimelineLoading(false))
   }
 
   async function handleDownloadPdf(workOrderUuid) {
@@ -556,7 +581,41 @@ export default function WorkOrders() {
                 >
                   {budgetExpandedUuid === wo.uuid ? 'Ocultar orçamento' : 'Ver orçamento'}
                 </button>
+
+                <button
+                  onClick={() => toggleTimeline(wo)}
+                  className="rounded border border-gray-300 px-3 py-1 text-gray-600 hover:bg-gray-100"
+                >
+                  {timelineExpandedUuid === wo.uuid ? 'Ocultar histórico' : 'Ver histórico'}
+                </button>
               </div>
+
+              {timelineExpandedUuid === wo.uuid && (
+                <div className="mt-4 border-t border-gray-100 pt-3">
+                  {timelineLoading && !timelineByWorkOrder[wo.uuid] && (
+                    <p className="text-sm text-gray-400">Carregando histórico...</p>
+                  )}
+
+                  {timelineByWorkOrder[wo.uuid]?.length === 0 && (
+                    <p className="text-sm text-gray-400">Nenhum evento registrado ainda.</p>
+                  )}
+
+                  {timelineByWorkOrder[wo.uuid]?.length > 0 && (
+                    <ol className="relative ml-2 border-l border-gray-200">
+                      {timelineByWorkOrder[wo.uuid].map((event, index) => (
+                        <li key={`${event.occurredAt}-${index}`} className="mb-4 ml-4 last:mb-0">
+                          <span className="absolute -left-[5px] mt-1.5 h-2.5 w-2.5 rounded-full bg-flowops-600" />
+                          <p className="text-sm text-gray-800">{event.description}</p>
+                          <p className="text-xs text-gray-500">
+                            {formatDateTime(event.occurredAt)}
+                            {event.actorName && ` — ${event.actorName}`}
+                          </p>
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+                </div>
+              )}
 
               {budgetExpandedUuid === wo.uuid && (
                 <div className="mt-4 border-t border-gray-100 pt-3">

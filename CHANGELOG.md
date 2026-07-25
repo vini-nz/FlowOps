@@ -3,6 +3,46 @@
 Todas as mudanças relevantes do projeto são registradas aqui.
 Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
+## [V2.3] — Timeline de Acompanhamento
+
+### Adicionado
+- `GET /work-orders/{uuid}/timeline` (`TimelineController`,
+  `TimelineService`): histórico completo da WorkOrder em ordem cronológica,
+  lendo os `domain_events` que já vinham sendo gravados desde a Sprint 3 —
+  nenhum evento novo precisou ser criado, só consumido
+- `TimelineDescriptionFormatter`: traduz `(event_type, payload)` em frase
+  legível no backend, com os mesmos rótulos acentuados que os badges da tela
+  usam. O frontend não interpreta `payload` — evita que cada consumidor
+  futuro (Notificações, Automações) reimplemente a leitura e divirjam
+- Frontend: botão "Ver histórico" no card da WorkOrder, com timeline
+  vertical (linha + marcadores) mostrando descrição, autor e data/hora
+
+### Corrigido
+- **Timeline exibia eventos da mesma transação fora de ordem** — a aprovação
+  de orçamento aparecia antes das transições de status que a causaram. Causa
+  raiz: `domain_events.occurred_at` usa `DEFAULT now()`, e no PostgreSQL
+  `now()` retorna o horário de início da **transação**, não do `INSERT`;
+  eventos gravados juntos (ex: `BudgetService.updateStatus` grava duas
+  transições + `ORCAMENTO_APROVADO`) ficam com timestamp idêntico e a
+  ordenação só por `occurred_at` era indefinida. Corrigido ordenando por
+  `occurred_at, id` (`BIGSERIAL` preserva a ordem de inserção).
+  Encontrado ao validar a Timeline com dados reais, não em revisão de código
+
+### Documentação
+- **Contrato de `domain_events.payload` documentado por tipo de evento**
+  (`docs/architecture.md`) — fecha o item de Dívida Técnica que pedia isso
+  "antes de Notificações/Automações dependerem dele". Notificações Internas
+  é justamente o próximo item do Kanban
+
+### Testado
+- `TimelineDescriptionFormatterTest` (8 cenários): é a validação executável
+  do contrato de payload — mudar o formato num Service sem atualizar o
+  formatter quebra o teste, em vez de falhar silenciosamente na tela.
+  Cobre também tipo desconhecido e payload malformado (fallback, sem exceção)
+- `TimelineServiceTest` (4 cenários): descrição/autor/timestamp, evento sem
+  autor, isolamento multi-tenant e preservação da ordem vinda do repositório
+- 23 cenários no total; `mvn clean test` limpo via Docker (Java 21)
+
 ## [V2.2] — PDF e Aprovação de Orçamento
 
 ### Adicionado

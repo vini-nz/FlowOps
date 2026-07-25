@@ -207,6 +207,34 @@ destino). Exige ao menos um item e o orçamento ainda em `RASCUNHO` — um
 orçamento já decidido, ou sem itens, retorna `409`. Preenche `decidedByName`
 e `decidedAt` na resposta do orçamento (ambos `null` enquanto `RASCUNHO`).
 
+## Timeline
+
+| Método | Rota | Descrição |
+|---|---|---|
+| `GET` | `/work-orders/{workOrderUuid}/timeline` | Histórico completo da WorkOrder em ordem cronológica |
+
+Leitura liberada a qualquer papel autenticado da empresa (mesma regra do
+`GET` de WorkOrders e Etapas) — o isolamento multi-tenant vem do filtro por
+`company_id`.
+
+**Response:**
+```json
+[
+  {
+    "eventType": "STATUS_ALTERADO",
+    "description": "Status alterado de Solicitação recebida para Orçamento gerado",
+    "actorName": "Operador Demonstração",
+    "occurredAt": "2026-07-24T22:49:33.763745Z"
+  }
+]
+```
+
+`description` já vem pronta para exibição — o cliente da API nunca precisa
+interpretar `domain_events.payload` (contrato por tipo de evento em
+`docs/architecture.md`). `actorName` é `null` em eventos sem autor.
+`eventType` é exposto para permitir ícone/estilo por tipo no frontend, mas um
+tipo desconhecido não quebra nada: `description` cai no próprio `eventType`.
+
 ## Usuários
 
 | Método | Rota | Descrição |
