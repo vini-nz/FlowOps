@@ -180,6 +180,46 @@ integridade, ambas com `409`:
 Iniciar a primeira etapa move a WorkOrder de `APROVADO` para `EM_EXECUCAO`
 automaticamente.
 
+### Evidências da etapa
+
+Arquivos (fotos/PDF) anexados a uma etapa. O binário **não passa pela API**:
+vai do navegador direto ao storage por URL pré-assinada (ver ADR-0004).
+
+| Método | Rota | Descrição |
+|---|---|---|
+| `GET` | `.../steps/{stepUuid}/evidences` | Lista as evidências confirmadas |
+| `POST` | `.../steps/{stepUuid}/evidences/upload-url` | Valida e devolve a URL pré-assinada de envio |
+| `POST` | `.../steps/{stepUuid}/evidences/{uuid}/confirm` | Confirma que o arquivo chegou ao storage |
+| `GET` | `.../steps/{stepUuid}/evidences/{uuid}/download-url` | URL assinada de leitura, curta duração |
+| `DELETE` | `.../steps/{stepUuid}/evidences/{uuid}` | Remove metadado e objeto |
+
+Escrita restrita a `ADMIN_EMPRESA`, `OPERADOR` e `TECNICO` (mesma linha
+"Anexar Evidências" da matriz RBAC).
+
+**Fluxo de envio, em três passos:**
+
+```
+1. POST .../evidences/upload-url
+   { "fileName": "foto.jpg", "contentType": "image/jpeg", "sizeBytes": 204800 }
+   → { "evidenceUuid": "...", "uploadUrl": "http://...", "expiresInMinutes": 10 }
+
+2. PUT <uploadUrl>            (direto no storage, com header Content-Type)
+   ⚠ sem header Authorization: ele não faz parte da assinatura e o storage recusa
+
+3. POST .../evidences/{evidenceUuid}/confirm
+   → a evidência passa a aparecer na galeria
+```
+
+Enquanto o passo 3 não acontece, a evidência **não existe** para o sistema:
+não aparece na listagem nem pode ser baixada. Confirmar um upload que nunca
+chegou retorna `409`.
+
+Tipos aceitos: `image/jpeg`, `image/png`, `image/webp`, `image/heic` e
+`application/pdf`. Limite padrão de 15 MB (`STORAGE_MAX_FILE_SIZE_MB`).
+Tipo ou tamanho fora do permitido retorna `409` **antes** de qualquer URL ser
+emitida. Valem também as travas da V2.4: `409` se a WorkOrder não estiver em
+`APROVADO`/`EM_EXECUCAO` ou se a etapa já estiver `CONCLUIDA`.
+
 ### Checklist da etapa
 
 A resposta da etapa traz `checklistItems`, com `fromTemplate` indicando se o

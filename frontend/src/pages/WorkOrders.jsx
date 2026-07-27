@@ -99,6 +99,17 @@ function formatDateTime(isoDateTime) {
   return new Date(isoDateTime).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })
 }
 
+function formatFileSize(bytes) {
+  if (!bytes && bytes !== 0) return ''
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function pendingChecklistCount(step) {
+  return (step.checklistItems || []).filter((item) => !item.done).length
+}
+
 // Espelha assertWorkOrderIsExecutable no backend (V2.4 / ADR-0003).
 function isExecutable(workOrder) {
   return workOrder.status === 'APROVADO' || workOrder.status === 'EM_EXECUCAO'
@@ -157,6 +168,8 @@ export default function WorkOrders() {
   const [timelineLoading, setTimelineLoading] = useState(false)
 
   const [checklistDraft, setChecklistDraft] = useState({})
+  const [evidencesByStep, setEvidencesByStep] = useState({})
+  const [uploadingStep, setUploadingStep] = useState(null)
 
   function loadWorkOrders() {
     setLoading(true)
@@ -257,9 +270,73 @@ export default function WorkOrders() {
         const drafts = {}
         response.data.forEach((step) => { drafts[step.uuid] = step.notes || '' })
         setNotesDraft((prev) => ({ ...prev, ...drafts }))
+        response.data.forEach((step) => loadEvidences(workOrderUuid, step.uuid))
       })
       .catch(() => setError('Não foi possível carregar as etapas.'))
       .finally(() => setStepsLoading(false))
+  }
+
+  function loadEvidences(workOrderUuid, stepUuid) {
+    api.get(`/work-orders/${workOrderUuid}/steps/${stepUuid}/evidences`)
+      .then((response) => setEvidencesByStep((prev) => ({ ...prev, [stepUuid]: response.data })))
+      .catch(() => {})
+  }
+
+  async function handleEvidenceUpload(workOrderUuid, step, file) {
+    if (!file) return
+    setUploadingStep(step.uuid)
+    setError('')
+
+    try {
+      // 1. O backend valida tipo/tamanho/permissao e devolve a URL assinada.
+      const { data } = await api.post(
+        `/work-orders/${workOrderUuid}/steps/${step.uuid}/evidences/upload-url`,
+        { fileName: file.name, contentType: file.type, sizeBytes: file.size }
+      )
+
+      // 2. Envio direto ao storage com fetch puro, NAO com o axios da api:
+      //    o interceptor dela anexa o header Authorization, que nao faz parte
+      //    da assinatura da URL e faria o storage recusar o PUT.
+      const upload = await fetch(data.uploadUrl, {
+        method: 'PUT',
+        body: file,
+        headers: { 'Content-Type': file.type }
+      })
+      if (!upload.ok) {
+        throw new Error(`storage respondeu ${upload.status}`)
+      }
+
+      // 3. So agora a evidencia passa a existir para o sistema.
+      await api.post(
+        `/work-orders/${workOrderUuid}/steps/${step.uuid}/evidences/${data.evidenceUuid}/confirm`
+      )
+      loadEvidences(workOrderUuid, step.uuid)
+    } catch (err) {
+      setError(err.response?.data?.message || 'Não foi possível enviar o arquivo.')
+    } finally {
+      setUploadingStep(null)
+    }
+  }
+
+  async function handleEvidenceDownload(workOrderUuid, step, evidence) {
+    try {
+      const { data } = await api.get(
+        `/work-orders/${workOrderUuid}/steps/${step.uuid}/evidences/${evidence.uuid}/download-url`
+      )
+      window.open(data.url, '_blank', 'noopener')
+    } catch {
+      setError('Não foi possível abrir o arquivo.')
+    }
+  }
+
+  async function handleEvidenceDelete(workOrderUuid, step, evidence) {
+    if (!confirm(`Remover "${evidence.fileName}"?`)) return
+    try {
+      await api.delete(`/work-orders/${workOrderUuid}/steps/${step.uuid}/evidences/${evidence.uuid}`)
+      loadEvidences(workOrderUuid, step.uuid)
+    } catch (err) {
+      setError(err.response?.data?.message || 'Não foi possível remover o arquivo.')
+    }
   }
 
   async function handleStepStatusChange(workOrderUuid, step, newStatus) {
@@ -965,6 +1042,69 @@ export default function WorkOrders() {
                               </button>
                             </div>
                           )}
+
+                          {/* Aviso, nao trava: o backend permite concluir com item
+                              pendente (o backlog pede "marcar sem mudar status"),
+                              mas esconder isso deixaria a verificacao decorativa. */}
+                          {isExecutable(wo) && step.status === 'EM_ANDAMENTO' && pendingChecklistCount(step) > 0 && (
+                            <p className="mt-2 rounded bg-amber-50 px-2 py-1 text-xs text-amber-800">
+                              {pendingChecklistCount(step)} item(ns) de checklist ainda não marcados nesta etapa.
+                            </p>
+                          )}
+
+                          {/* Evidências (V2.6) */}
+                          <div className="mt-3 border-t border-gray-200 pt-2">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-xs font-medium text-gray-600">Evidências</span>
+                              {isExecutable(wo) && step.status !== 'CONCLUIDA' && (
+                                <label className="cursor-pointer rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-100">
+                                  {uploadingStep === step.uuid ? 'Enviando...' : 'Anexar arquivo'}
+                                  <input
+                                    type="file"
+                                    className="hidden"
+                                    accept="image/jpeg,image/png,image/webp,image/heic,application/pdf"
+                                    disabled={uploadingStep === step.uuid}
+                                    onChange={(e) => {
+                                      handleEvidenceUpload(wo.uuid, step, e.target.files?.[0])
+                                      e.target.value = ''
+                                    }}
+                                  />
+                                </label>
+                              )}
+                            </div>
+
+                            {(evidencesByStep[step.uuid]?.length ?? 0) === 0 ? (
+                              <p className="mt-1 text-xs text-gray-400">Nenhum arquivo anexado.</p>
+                            ) : (
+                              <ul className="mt-1 space-y-1">
+                                {evidencesByStep[step.uuid].map((evidence) => (
+                                  <li key={evidence.uuid} className="flex items-center gap-2 text-xs">
+                                    <span title={evidence.image ? 'Imagem' : 'Documento'}>
+                                      {evidence.image ? '🖼️' : '📄'}
+                                    </span>
+                                    <button
+                                      onClick={() => handleEvidenceDownload(wo.uuid, step, evidence)}
+                                      className="text-flowops-600 hover:underline"
+                                    >
+                                      {evidence.fileName}
+                                    </button>
+                                    <span className="text-[10px] text-gray-400">
+                                      {formatFileSize(evidence.sizeBytes)}
+                                      {evidence.uploadedByName ? ` · ${evidence.uploadedByName}` : ''}
+                                    </span>
+                                    {isExecutable(wo) && step.status !== 'CONCLUIDA' && (
+                                      <button
+                                        onClick={() => handleEvidenceDelete(wo.uuid, step, evidence)}
+                                        className="text-red-600 hover:underline"
+                                      >
+                                        remover
+                                      </button>
+                                    )}
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
 
                           {step.status === 'CONCLUIDA' ? (
                             step.notes && <p className="mt-2 text-xs text-gray-600">{step.notes}</p>

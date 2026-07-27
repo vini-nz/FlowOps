@@ -41,7 +41,7 @@ alterar nada. Para um ambiente que não seja apenas local, troque o
 openssl rand -hex 32
 ```
 
-### 3. Suba os três serviços
+### 3. Suba os serviços
 
 ```bash
 docker compose up --build
@@ -51,13 +51,26 @@ Isso vai:
 1. Criar o container do PostgreSQL 16 e rodar o schema (`flowops_ddl.sql`)
    seguido dos dados de demonstração (`seed.sql`), automaticamente, só na
    primeira vez que o volume é criado
-2. Buildar a imagem do backend (Maven + Spring Boot) e subir na porta `8080`
-3. Buildar a imagem do frontend (Vite dev server) e subir na porta `5173`
+2. Subir o MinIO (storage de evidências, V2.6) nas portas `9000` (API S3) e
+   `9001` (console web). O bucket é criado sozinho na subida do backend
+3. Buildar a imagem do backend (Maven + Spring Boot) e subir na porta `8080`
+4. Buildar a imagem do frontend (Vite dev server) e subir na porta `5173`
 
 A primeira execução demora alguns minutos (download de dependências). As
 próximas são bem mais rápidas graças ao cache das camadas do Docker.
 
-### 4. Confirme que os três serviços estão de pé
+Nenhuma conta em serviço de nuvem é necessária: o MinIO faz o papel do S3
+localmente. Para inspecionar os arquivos enviados, abra
+`http://localhost:9001` e entre com `STORAGE_ACCESS_KEY`/`STORAGE_SECRET_KEY`
+(padrão `flowops` / `flowops123`).
+
+> **Indo para produção:** troque `STORAGE_ENDPOINT` e
+> `STORAGE_PUBLIC_ENDPOINT` para o provedor S3-compatível escolhido (AWS S3,
+> Cloudflare R2, Backblaze B2) e ajuste as credenciais. Nenhuma mudança de
+> código é necessária. Atenção: `STORAGE_PUBLIC_ENDPOINT` precisa ser o host
+> que o **navegador** alcança — as URLs de upload são assinadas para ele.
+
+### 4. Confirme que os serviços estão de pé
 
 ```bash
 docker compose ps
@@ -108,6 +121,17 @@ docker compose down -v
 | `JWT_EXPIRATION_MINUTES` | Tempo de validade do token | `60` |
 | `CORS_ALLOWED_ORIGINS` | Origem permitida para chamadas ao backend | `http://localhost:5173` |
 | `VITE_API_URL` | URL base da API usada pelo frontend | `http://localhost:8080/api/v1` |
+| `STORAGE_ACCESS_KEY` / `STORAGE_SECRET_KEY` | Credenciais do storage | `flowops` / `flowops123` |
+| `STORAGE_BUCKET` | Bucket das evidências (criado sozinho) | `flowops-evidences` |
+| `STORAGE_ENDPOINT` | Endpoint que o **backend** usa | `http://storage:9000` |
+| `STORAGE_PUBLIC_ENDPOINT` | Endpoint que o **navegador** usa — as URLs são assinadas para ele | `http://localhost:9000` |
+| `STORAGE_MAX_FILE_SIZE_MB` | Tamanho máximo por evidência | `15` |
+
+Os dois endpoints de storage são diferentes de propósito quando se roda via
+Docker: o backend fala com o container pela rede interna, mas a URL
+pré-assinada precisa apontar para um host que o navegador consiga acessar —
+e a assinatura inclui esse host. Apontar os dois para o mesmo valor faz o
+upload falhar em um dos dois lados.
 
 ---
 

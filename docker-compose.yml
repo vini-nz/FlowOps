@@ -20,6 +20,29 @@ services:
       timeout: 5s
       retries: 10
 
+  # Storage S3-compativel local (V2.6). Mantem o projeto rodando inteiro com
+  # um "docker compose up", sem exigir conta em provedor de nuvem. Como o
+  # backend usa o SDK S3 de verdade, migrar para AWS/Cloudflare R2 em
+  # producao e so trocar as variaveis de ambiente - nenhuma linha de codigo.
+  storage:
+    image: minio/minio:latest
+    container_name: flowops-storage
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${STORAGE_ACCESS_KEY:-flowops}
+      MINIO_ROOT_PASSWORD: ${STORAGE_SECRET_KEY:-flowops123}
+    ports:
+      - "9000:9000"   # API S3 - o navegador acessa aqui via URL pre-assinada
+      - "9001:9001"   # Console web do MinIO (inspecao manual dos arquivos)
+    volumes:
+      - flowops_storage:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   backend:
     build:
       context: ./backend
@@ -27,6 +50,8 @@ services:
     restart: unless-stopped
     depends_on:
       db:
+        condition: service_healthy
+      storage:
         condition: service_healthy
     environment:
       DB_HOST: db
@@ -37,6 +62,14 @@ services:
       JWT_SECRET: ${JWT_SECRET:-troque-esta-chave-em-producao-minimo-256-bits-0123456789abcdef}
       JWT_EXPIRATION_MINUTES: ${JWT_EXPIRATION_MINUTES:-60}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
+      # Endpoint interno (rede do compose) para as chamadas do backend.
+      STORAGE_ENDPOINT: ${STORAGE_ENDPOINT:-http://storage:9000}
+      # Endpoint publico usado para ASSINAR as URLs: a assinatura inclui o
+      # host, entao precisa ser o mesmo que o navegador vai chamar.
+      STORAGE_PUBLIC_ENDPOINT: ${STORAGE_PUBLIC_ENDPOINT:-http://localhost:9000}
+      STORAGE_BUCKET: ${STORAGE_BUCKET:-flowops-evidences}
+      STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY:-flowops}
+      STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:-flowops123}
     ports:
       - "8080:8080"
 
@@ -57,3 +90,4 @@ services:
 
 volumes:
   flowops_pgdata:
+  flowops_storage:

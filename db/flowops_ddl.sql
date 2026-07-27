@@ -298,6 +298,40 @@ CREATE TRIGGER trg_wo_step_checklist_items_updated_at
     BEFORE UPDATE ON work_order_step_checklist_items
     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
+-- ----------------------------------------------------------------------------
+-- Evidências: fotos e documentos anexados a uma etapa (V2.6). O arquivo em si
+-- vive no storage S3-compatível; aqui fica só o metadado e a chave do objeto.
+--
+-- uploaded_at NULL = a URL pré-assinada foi emitida mas o upload nunca foi
+-- confirmado. É o preço de deixar o navegador enviar direto ao storage: o
+-- backend não participa da transferência, então registra a intenção antes e
+-- confirma depois. Listagens só mostram evidências confirmadas.
+-- ----------------------------------------------------------------------------
+
+CREATE TABLE evidences (
+    id                  BIGSERIAL PRIMARY KEY,
+    uuid                UUID NOT NULL UNIQUE DEFAULT gen_random_uuid(),
+    company_id          BIGINT NOT NULL REFERENCES companies(id),
+    work_order_step_id  BIGINT NOT NULL REFERENCES work_order_steps(id) ON DELETE CASCADE,
+
+    object_key          VARCHAR(500) NOT NULL UNIQUE,
+    file_name           VARCHAR(255) NOT NULL,
+    content_type        VARCHAR(120) NOT NULL,
+    size_bytes          BIGINT CHECK (size_bytes IS NULL OR size_bytes >= 0),
+
+    uploaded_at         TIMESTAMPTZ,
+    uploaded_by_id      BIGINT NOT NULL REFERENCES users(id),
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_evidences_step_id ON evidences(work_order_step_id, created_at);
+CREATE INDEX idx_evidences_company_id ON evidences(company_id);
+-- Índice parcial para varrer registros órfãos (upload iniciado e abandonado).
+CREATE INDEX idx_evidences_pending ON evidences(created_at) WHERE uploaded_at IS NULL;
+
+COMMENT ON TABLE  evidences IS 'Metadado de arquivo anexado a uma etapa; o binário fica no storage S3-compatível.';
+COMMENT ON COLUMN evidences.uploaded_at IS 'NULL enquanto o upload não foi confirmado pelo cliente — registro órfão em potencial.';
+
 -- ============================================================================
 -- DOMÍNIO: COMERCIAL (Catálogo e Orçamentos) — V2.1
 -- ============================================================================

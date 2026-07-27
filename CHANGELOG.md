@@ -3,6 +3,65 @@
 Todas as mudanças relevantes do projeto são registradas aqui.
 Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
+## [V2.6] — Evidências por Etapa
+
+Fecha o item 3 do Backlog Detalhado, cuja parte de checklist saiu na V2.5.
+Primeira funcionalidade do projeto que guarda arquivo binário. Ver ADR-0004.
+
+### Adicionado
+- Storage S3-compatível com **MinIO no `docker-compose`**: o projeto continua
+  subindo inteiro com um comando, sem exigir conta em provedor de nuvem. Como
+  o código usa o SDK oficial da AWS, migrar para S3/Cloudflare R2/Backblaze em
+  produção é troca de variável de ambiente — nenhuma linha de código muda
+- Upload por **URL pré-assinada**: o arquivo vai do navegador direto ao
+  storage, sem passar pelo backend. Fluxo em três passos —
+  `POST /evidences/upload-url` (valida e assina) → `PUT` direto no storage →
+  `POST /evidences/{uuid}/confirm` (verifica que o objeto chegou)
+- Galeria por etapa com download por URL assinada de curta duração: o bucket
+  é privado, nada é servido publicamente, e cada acesso passa por uma URL que
+  o backend só emite após checar o isolamento por empresa
+- Validação de tipo (JPEG, PNG, WebP, HEIC, PDF) e tamanho (15 MB por
+  padrão, configurável) **antes** de emitir a URL
+- Bucket criado automaticamente no boot, se não existir — sem isso o primeiro
+  upload de uma instalação nova falharia com correção manual no console
+- Frontend: anexar, listar, baixar e remover evidências no painel de etapas
+- Aviso (não trava) de itens de checklist pendentes ao trabalhar uma etapa —
+  ponto que ficou em aberto na V2.5
+
+### Detalhe técnico que a URL pré-assinada exigiu
+- A assinatura SigV4 cobre o cabeçalho `Host`. Dentro do Docker o backend
+  fala com `storage:9000`, mas o navegador só alcança `localhost:9000` —
+  assinar com o host interno geraria URL inútil no browser. Por isso há dois
+  clientes: `S3Client` no endpoint interno (bucket, `headObject`, exclusão) e
+  `S3Presigner` no endpoint público (só para assinar). `pathStyleAccess` é
+  obrigatório para MinIO
+- No frontend, o `PUT` no storage usa `fetch` puro e **não** o axios da API:
+  o interceptor dela anexa `Authorization`, que não faz parte da assinatura e
+  faria o storage recusar o envio
+
+### Dívida técnica registrada
+- **Registros órfãos:** como o backend não presencia a transferência, o
+  metadado nasce com `uploaded_at` nulo e só vira evidência de verdade após a
+  confirmação. Upload abandonado deixa linha pendente. Listagens filtram
+  `uploaded_at IS NOT NULL` (órfão nunca aparece nem é baixável) e existe
+  índice parcial para varrê-los, mas **a rotina de limpeza periódica não foi
+  implementada** — custo desprezível, o objeto sequer chegou ao storage
+
+### Testado
+- 57 cenários no total (`EvidenceServiceTest`, 9 novos): tipo e tamanho
+  recusados antes de assinar, OS não aprovada, etapa concluída, confirmação
+  de upload que nunca chegou, uso do tamanho real do storage em vez do
+  informado pelo cliente, e evidência de outra etapa não resolvendo
+- Ciclo real validado ponta a ponta: PNG enviado por URL pré-assinada,
+  baixado de volta e comparado byte a byte com o original (idêntico), e
+  arquivos conferidos fisicamente no MinIO com as chaves organizadas por
+  empresa/OS/etapa
+- Upload **pelo navegador** validado (exercita o CORS do `PUT` de verdade),
+  sem erro de console
+- Isolamento multi-tenant: criei uma segunda empresa e todas as rotas de
+  evidência responderam `404` para ela — listar, baixar, excluir e pedir
+  upload — sem vazar sequer a existência do recurso
+
 ## [V2.5] — Workflow configurável e Checklist por Etapa
 
 Antecipa para a V2 o "Definir template de workflow padrão" que estava em

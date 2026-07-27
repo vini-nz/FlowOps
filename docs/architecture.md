@@ -282,6 +282,34 @@ default para `clock_timestamp()`, que resolveria na origem, mas alteraria o
 significado da coluna em dados já gravados e não ajudaria em eventos
 inseridos no mesmo microssegundo.
 
+## Arquivos ficam fora do banco e fora do backend (V2.6)
+
+Evidências são a primeira funcionalidade que guarda binário. Duas decisões,
+detalhadas em `docs/adr/0004-storage-de-evidencias.md`:
+
+**O arquivo nunca entra no banco nem trafega pela API.** `evidences` guarda
+só metadado e a chave do objeto; o binário vive num storage S3-compatível
+(MinIO local via `docker-compose`, trocável por S3/R2/B2 só por variável de
+ambiente). Gravar em pasta local seria pior que parece: em Railway/Render o
+disco do contêiner é efêmero e os arquivos sumiriam no próximo deploy.
+
+**A assinatura da URL cobre o host, e isso obriga dois clientes S3.** Dentro
+do Docker o backend alcança o storage em `storage:9000`, mas o navegador só
+enxerga `localhost:9000`. Como o SigV4 assina o cabeçalho `Host`, uma URL
+assinada com o nome interno seria inútil no browser — nem resolve o nome, nem
+a assinatura confere. Daí `StorageConfig` expor `S3Client` no endpoint
+interno (bucket, `headObject`, exclusão) e `S3Presigner` no endpoint público
+(só para assinar).
+
+A consequência de não participar da transferência é que o backend precisa
+registrar o metadado **antes** do upload, para poder assinar a URL. Por isso
+`uploaded_at` nasce nulo e a evidência só existe para o sistema depois do
+`confirm`, que faz `headObject` para comprovar que o objeto chegou — e
+regrava o tamanho com o valor real do storage, ignorando o que o cliente
+informou. Uploads abandonados deixam linhas pendentes, que nunca aparecem em
+listagem (todo `find` filtra `uploaded_at IS NOT NULL`); a rotina de limpeza
+periódica é dívida técnica registrada, não esquecimento.
+
 ## Workflow é molde, WorkOrder é instância (V2.5)
 
 O schema já previa `workflow_templates`/`workflow_steps` por empresa desde a
