@@ -3,7 +3,6 @@ package com.flowops.service;
 import com.flowops.dto.workorderstep.StepChecklistItemResponse;
 import com.flowops.dto.workorderstep.WorkOrderStepResponse;
 import com.flowops.dto.workorderstep.WorkOrderStepStatusUpdateRequest;
-import com.flowops.entity.DomainEvent;
 import com.flowops.entity.User;
 import com.flowops.entity.WorkOrder;
 import com.flowops.entity.WorkOrderStep;
@@ -12,7 +11,6 @@ import com.flowops.enums.StepStatus;
 import com.flowops.enums.WorkOrderStatus;
 import com.flowops.exception.BusinessRuleException;
 import com.flowops.exception.ResourceNotFoundException;
-import com.flowops.repository.DomainEventRepository;
 import com.flowops.repository.WorkOrderRepository;
 import com.flowops.repository.WorkOrderStepChecklistItemRepository;
 import com.flowops.repository.WorkOrderStepRepository;
@@ -30,7 +28,7 @@ public class WorkOrderStepService {
 
     private final WorkOrderStepRepository workOrderStepRepository;
     private final WorkOrderRepository workOrderRepository;
-    private final DomainEventRepository domainEventRepository;
+    private final DomainEventService domainEventService;
     private final WorkOrderService workOrderService;
     private final WorkOrderStepChecklistItemRepository checklistItemRepository;
 
@@ -65,7 +63,7 @@ public class WorkOrderStepService {
         item.setDoneBy(done ? actor : null);
         checklistItemRepository.save(item);
 
-        recordEvent(workOrder, done ? "CHECKLIST_ITEM_MARCADO" : "CHECKLIST_ITEM_DESMARCADO", actor,
+        domainEventService.record(workOrder, done ? "CHECKLIST_ITEM_MARCADO" : "CHECKLIST_ITEM_DESMARCADO", actor,
                 "{\"etapa\":\"%s\",\"item\":\"%s\"}".formatted(step.getTitle(), item.getDescription()));
 
         return toResponse(step);
@@ -89,7 +87,7 @@ public class WorkOrderStepService {
                 .orElse(1));
         checklistItemRepository.save(item);
 
-        recordEvent(workOrder, "CHECKLIST_ITEM_ADICIONADO", actor,
+        domainEventService.record(workOrder, "CHECKLIST_ITEM_ADICIONADO", actor,
                 "{\"etapa\":\"%s\",\"item\":\"%s\"}".formatted(step.getTitle(), description));
 
         return toResponse(step);
@@ -162,7 +160,7 @@ public class WorkOrderStepService {
         WorkOrderStep saved = workOrderStepRepository.save(step);
 
         if (statusChanged) {
-            recordEvent(workOrder, "ETAPA_STATUS_ALTERADA", actor,
+            domainEventService.record(workOrder, "ETAPA_STATUS_ALTERADA", actor,
                     "{\"etapa\":\"%s\",\"de\":\"%s\",\"para\":\"%s\"}"
                             .formatted(saved.getTitle(), currentStatus, newStatus));
 
@@ -175,7 +173,7 @@ public class WorkOrderStepService {
                         companyId, workOrderUuid, WorkOrderStatus.EM_EXECUCAO, actor);
             }
         } else if (request.notes() != null) {
-            recordEvent(workOrder, "ETAPA_OBSERVACAO_REGISTRADA", actor,
+            domainEventService.record(workOrder, "ETAPA_OBSERVACAO_REGISTRADA", actor,
                     "{\"etapa\":\"%s\"}".formatted(saved.getTitle()));
         }
 
@@ -238,12 +236,4 @@ public class WorkOrderStepService {
                 });
     }
 
-    private void recordEvent(WorkOrder workOrder, String eventType, User actor, String payload) {
-        DomainEvent event = new DomainEvent();
-        event.setWorkOrder(workOrder);
-        event.setEventType(eventType);
-        event.setActor(actor);
-        event.setPayload(payload);
-        domainEventRepository.save(event);
-    }
 }

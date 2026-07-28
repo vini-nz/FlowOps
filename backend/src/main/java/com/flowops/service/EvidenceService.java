@@ -5,7 +5,6 @@ import com.flowops.dto.evidence.EvidenceResponse;
 import com.flowops.dto.evidence.EvidenceUploadRequest;
 import com.flowops.dto.evidence.EvidenceUploadUrlResponse;
 import com.flowops.entity.Company;
-import com.flowops.entity.DomainEvent;
 import com.flowops.entity.Evidence;
 import com.flowops.entity.User;
 import com.flowops.entity.WorkOrder;
@@ -14,7 +13,6 @@ import com.flowops.enums.StepStatus;
 import com.flowops.enums.WorkOrderStatus;
 import com.flowops.exception.BusinessRuleException;
 import com.flowops.exception.ResourceNotFoundException;
-import com.flowops.repository.DomainEventRepository;
 import com.flowops.repository.EvidenceRepository;
 import com.flowops.repository.WorkOrderRepository;
 import com.flowops.repository.WorkOrderStepRepository;
@@ -44,7 +42,7 @@ public class EvidenceService {
     private final EvidenceRepository evidenceRepository;
     private final WorkOrderRepository workOrderRepository;
     private final WorkOrderStepRepository workOrderStepRepository;
-    private final DomainEventRepository domainEventRepository;
+    private final DomainEventService domainEventService;
     private final StorageService storageService;
     private final StorageProperties storageProperties;
 
@@ -115,7 +113,7 @@ public class EvidenceService {
         evidence.setUploadedAt(OffsetDateTime.now());
         Evidence saved = evidenceRepository.save(evidence);
 
-        recordEvent(workOrder, "EVIDENCIA_ANEXADA", actor,
+        domainEventService.record(workOrder, "EVIDENCIA_ANEXADA", actor,
                 "{\"etapa\":\"%s\",\"arquivo\":\"%s\"}".formatted(step.getTitle(), evidence.getFileName()));
 
         return EvidenceResponse.from(saved);
@@ -147,7 +145,7 @@ public class EvidenceService {
         evidenceRepository.delete(evidence);
         storageService.delete(evidence.getObjectKey());
 
-        recordEvent(workOrder, "EVIDENCIA_REMOVIDA", actor,
+        domainEventService.record(workOrder, "EVIDENCIA_REMOVIDA", actor,
                 "{\"etapa\":\"%s\",\"arquivo\":\"%s\"}".formatted(step.getTitle(), evidence.getFileName()));
     }
 
@@ -208,14 +206,6 @@ public class EvidenceService {
         return evidence;
     }
 
-    private void recordEvent(WorkOrder workOrder, String eventType, User actor, String payload) {
-        DomainEvent event = new DomainEvent();
-        event.setWorkOrder(workOrder);
-        event.setEventType(eventType);
-        event.setActor(actor);
-        event.setPayload(payload);
-        domainEventRepository.save(event);
-    }
 
     private Company refCompany(Long companyId) {
         Company company = new Company();

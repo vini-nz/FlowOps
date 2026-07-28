@@ -4,7 +4,6 @@ import com.flowops.dto.workorder.WorkOrderRequest;
 import com.flowops.dto.workorder.WorkOrderResponse;
 import com.flowops.entity.Client;
 import com.flowops.entity.Company;
-import com.flowops.entity.DomainEvent;
 import com.flowops.entity.User;
 import com.flowops.entity.WorkOrder;
 import com.flowops.entity.WorkOrderStep;
@@ -17,7 +16,6 @@ import com.flowops.enums.WorkOrderStatus;
 import com.flowops.exception.BusinessRuleException;
 import com.flowops.exception.ResourceNotFoundException;
 import com.flowops.repository.ClientRepository;
-import com.flowops.repository.DomainEventRepository;
 import com.flowops.repository.UserRepository;
 import com.flowops.repository.WorkOrderRepository;
 import com.flowops.repository.WorkOrderStepChecklistItemRepository;
@@ -40,7 +38,7 @@ public class WorkOrderService {
     private final WorkOrderRepository workOrderRepository;
     private final ClientRepository clientRepository;
     private final UserRepository userRepository;
-    private final DomainEventRepository domainEventRepository;
+    private final DomainEventService domainEventService;
     private final WorkflowTemplateRepository workflowTemplateRepository;
     private final WorkflowStepRepository workflowStepRepository;
     private final WorkOrderStepRepository workOrderStepRepository;
@@ -89,7 +87,7 @@ public class WorkOrderService {
                 .ifPresent(workOrder::setWorkflowTemplate);
 
         WorkOrder saved = workOrderRepository.save(workOrder);
-        recordEvent(saved, "WORKORDER_CRIADA", createdBy, null);
+        domainEventService.record(saved, "WORKORDER_CRIADA", createdBy, null);
 
         if (saved.getWorkflowTemplate() != null) {
             instantiateSteps(saved);
@@ -184,7 +182,7 @@ public class WorkOrderService {
         workOrder.setStatus(newStatus);
         WorkOrder saved = workOrderRepository.save(workOrder);
 
-        recordEvent(saved, "STATUS_ALTERADO", actor,
+        domainEventService.record(saved, "STATUS_ALTERADO", actor,
                 "{\"de\":\"%s\",\"para\":\"%s\"}".formatted(currentStatus, newStatus));
 
         return WorkOrderResponse.from(saved);
@@ -228,7 +226,7 @@ public class WorkOrderService {
 
         WorkOrder saved = workOrderRepository.save(workOrder);
 
-        recordEvent(saved, "RESPONSAVEL_ATRIBUIDO", actor,
+        domainEventService.record(saved, "RESPONSAVEL_ATRIBUIDO", actor,
                 assignee != null ? "{\"assignedTo\":\"%s\"}".formatted(assignee.getName()) : "{\"assignedTo\":null}");
 
         return WorkOrderResponse.from(saved);
@@ -244,14 +242,6 @@ public class WorkOrderService {
                 .orElseThrow(() -> new ResourceNotFoundException("Usuário responsável não encontrado"));
     }
 
-    private void recordEvent(WorkOrder workOrder, String eventType, User actor, String payload) {
-        DomainEvent event = new DomainEvent();
-        event.setWorkOrder(workOrder);
-        event.setEventType(eventType);
-        event.setActor(actor);
-        event.setPayload(payload);
-        domainEventRepository.save(event);
-    }
 
     private Company refCompany(Long companyId) {
         Company company = new Company();

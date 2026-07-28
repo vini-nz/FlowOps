@@ -7,7 +7,6 @@ import com.flowops.entity.Budget;
 import com.flowops.entity.BudgetItem;
 import com.flowops.entity.CatalogItem;
 import com.flowops.entity.Company;
-import com.flowops.entity.DomainEvent;
 import com.flowops.entity.User;
 import com.flowops.entity.WorkOrder;
 import com.flowops.enums.BudgetStatus;
@@ -17,7 +16,6 @@ import com.flowops.exception.ResourceNotFoundException;
 import com.flowops.repository.BudgetItemRepository;
 import com.flowops.repository.BudgetRepository;
 import com.flowops.repository.CatalogItemRepository;
-import com.flowops.repository.DomainEventRepository;
 import com.flowops.repository.WorkOrderRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -44,7 +42,7 @@ public class BudgetService {
     private final BudgetItemRepository budgetItemRepository;
     private final CatalogItemRepository catalogItemRepository;
     private final WorkOrderRepository workOrderRepository;
-    private final DomainEventRepository domainEventRepository;
+    private final DomainEventService domainEventService;
     private final WorkOrderService workOrderService;
     private final BudgetPdfService budgetPdfService;
 
@@ -87,7 +85,7 @@ public class BudgetService {
         budget.setCreatedBy(actor);
         budgetRepository.save(budget);
 
-        recordEvent(workOrder, "ORCAMENTO_CRIADO", actor, null);
+        domainEventService.record(workOrder, "ORCAMENTO_CRIADO", actor, null);
         workOrderService.applyDerivedStatus(companyId, workOrderUuid, WorkOrderStatus.ORCAMENTO_GERADO, actor);
 
         return get(companyId, workOrderUuid);
@@ -122,7 +120,7 @@ public class BudgetService {
         budgetItemRepository.save(item);
 
         recalculateTotal(budget);
-        recordEvent(workOrder, "ITEM_ADICIONADO", actor,
+        domainEventService.record(workOrder, "ITEM_ADICIONADO", actor,
                 "{\"description\":\"%s\",\"subtotal\":%s}".formatted(item.getDescription(), item.getSubtotal()));
 
         return get(companyId, workOrderUuid);
@@ -139,7 +137,7 @@ public class BudgetService {
 
         budgetItemRepository.delete(item);
         recalculateTotal(budget);
-        recordEvent(workOrder, "ITEM_REMOVIDO", actor, "{\"description\":\"%s\"}".formatted(item.getDescription()));
+        domainEventService.record(workOrder, "ITEM_REMOVIDO", actor, "{\"description\":\"%s\"}".formatted(item.getDescription()));
 
         return get(companyId, workOrderUuid);
     }
@@ -176,7 +174,7 @@ public class BudgetService {
         budget.setDecidedAt(OffsetDateTime.now());
         budgetRepository.save(budget);
 
-        recordEvent(workOrder, "ORCAMENTO_" + newStatus, actor, null);
+        domainEventService.record(workOrder, "ORCAMENTO_" + newStatus, actor, null);
 
         return get(companyId, workOrderUuid);
     }
@@ -212,14 +210,6 @@ public class BudgetService {
                 .orElseThrow(() -> new ResourceNotFoundException("Orçamento não encontrado para esta WorkOrder"));
     }
 
-    private void recordEvent(WorkOrder workOrder, String eventType, User actor, String payload) {
-        DomainEvent event = new DomainEvent();
-        event.setWorkOrder(workOrder);
-        event.setEventType(eventType);
-        event.setActor(actor);
-        event.setPayload(payload);
-        domainEventRepository.save(event);
-    }
 
     private Company refCompany(Long companyId) {
         Company company = new Company();
