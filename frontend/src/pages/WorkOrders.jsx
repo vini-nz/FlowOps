@@ -537,6 +537,7 @@ export default function WorkOrders() {
             <span className="font-medium text-flowops-700">WorkOrders</span>
             <Link to="/catalog" className="text-gray-500 hover:text-flowops-700">Catálogo</Link>
             <Link to="/workflow" className="text-gray-500 hover:text-flowops-700">Workflow</Link>
+            <Link to="/profile" className="text-gray-500 hover:text-flowops-700">Perfil</Link>
           </nav>
         </div>
         <div className="flex items-center gap-3">

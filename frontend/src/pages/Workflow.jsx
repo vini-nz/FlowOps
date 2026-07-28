@@ -130,6 +130,7 @@ export default function Workflow() {
             <Link to="/work-orders" className="text-gray-500 hover:text-flowops-700">WorkOrders</Link>
             <Link to="/catalog" className="text-gray-500 hover:text-flowops-700">Catálogo</Link>
             <span className="font-medium text-flowops-700">Workflow</span>
+            <Link to="/profile" className="text-gray-500 hover:text-flowops-700">Perfil</Link>
           </nav>
         </div>
         <NotificationBell />

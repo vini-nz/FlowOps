@@ -49,6 +49,15 @@ public class JwtService {
         return parseClaims(token).getSubject();
     }
 
+    /**
+     * Momento de emissão do token. Usado para recusar tokens anteriores à
+     * última troca de senha (V2.8) — sem isso, trocar a senha não expulsaria
+     * uma sessão já aberta, já que o token é stateless.
+     */
+    public Instant extractIssuedAt(String token) {
+        return parseClaims(token).getIssuedAt().toInstant();
+    }
+
     public boolean isTokenValid(String token, String expectedEmail) {
         Claims claims = parseClaims(token);
         boolean emailMatches = claims.getSubject().equals(expectedEmail);

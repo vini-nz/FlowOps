@@ -284,6 +284,35 @@ default para `clock_timestamp()`, que resolveria na origem, mas alteraria o
 significado da coluna em dados já gravados e não ajudaria em eventos
 inseridos no mesmo microssegundo.
 
+## Troca de senha precisa derrubar sessão, e JWT stateless não faz isso sozinho (V2.8)
+
+O JWT do FlowOps é stateless: o servidor não guarda sessão, só valida
+assinatura e expiração. A consequência é que trocar a senha, por si só, não
+faz nada com os tokens já emitidos — um token roubado continuaria válido até
+expirar (60 min por padrão) mesmo depois de a vítima trocar a senha. Isso
+transformaria "trocar senha" num gesto sem efeito de segurança real, que é
+justamente o oposto do motivo pelo qual alguém troca a senha.
+
+A solução é uma marca de corte por usuário: `users.password_changed_at`. O
+`JwtAuthenticationFilter` recusa qualquer token cujo `iat` seja anterior a
+ela. Custo real: **zero query extra** — o filtro já carregava o `User` a cada
+requisição para montar o `UserDetails`.
+
+Dois detalhes que a implementação exigiu:
+
+- **A comparação trunca `password_changed_at` para segundos.** O claim `iat`
+  do JWT tem precisão de segundo, enquanto a coluna guarda microssegundos.
+  Sem truncar, o token novo emitido no mesmo segundo da troca seria recusado
+  junto com os antigos, e quem acabou de trocar a senha levaria `401`
+  imediatamente.
+- **A resposta devolve um token novo.** Quem trocou a senha deve continuar
+  logado; só as outras sessões caem. O mesmo vale para troca de e-mail, já
+  que o `sub` do JWT é o e-mail e o token antigo deixa de resolver o usuário.
+
+Isso **não** substitui o item "Sessões ativas" da V3 — lá o usuário vê e
+revoga sessões individualmente, o que exige registrar cada uma. Aqui é o
+mínimo correto para que a troca de senha signifique alguma coisa.
+
 ## Um só ponto grava evento, e quem reage é desacoplado (V2.7)
 
 Até a V2.6 cada serviço tinha sua própria cópia privada de `recordEvent` —

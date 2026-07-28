@@ -54,6 +54,10 @@ CREATE TABLE users (
                     CHECK (role IN ('ADMIN_EMPRESA', 'OPERADOR', 'TECNICO')),
     is_active       BOOLEAN NOT NULL DEFAULT TRUE,
     last_login_at   TIMESTAMPTZ,
+    -- V2.8: qualquer JWT emitido ANTES deste instante é recusado pelo filtro.
+    -- Sem isso, trocar a senha não expulsaria uma sessão já aberta com a senha
+    -- antiga — o token é stateless e valeria até expirar sozinho.
+    password_changed_at TIMESTAMPTZ,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );

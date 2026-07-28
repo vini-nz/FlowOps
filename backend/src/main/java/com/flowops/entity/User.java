@@ -51,6 +51,13 @@ public class User implements UserDetails {
     @Column(name = "last_login_at")
     private OffsetDateTime lastLoginAt;
 
+    /**
+     * Marca de corte para tokens (V2.8): todo JWT emitido antes deste
+     * instante é recusado. Nulo para quem nunca trocou a senha.
+     */
+    @Column(name = "password_changed_at")
+    private OffsetDateTime passwordChangedAt;
+
     @Column(name = "created_at", nullable = false, insertable = false, updatable = false)
     private OffsetDateTime createdAt;
 

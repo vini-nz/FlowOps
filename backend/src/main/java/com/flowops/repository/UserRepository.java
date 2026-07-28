@@ -32,6 +32,15 @@ public interface UserRepository extends JpaRepository<User, Long> {
     // Alimenta o dropdown de "responsavel" no frontend (Clientes nao precisa
     // disso, mas WorkOrders sim).
     List<User> findByCompanyIdAndActiveTrueOrderByNameAsc(Long companyId);
+
+    // Perfil (V2.8): ProfileResponse le company.name, e company e LAZY -
+    // EntityGraph pelo mesmo motivo do metodo por email acima.
+    @EntityGraph(attributePaths = "company")
+    Optional<User> findWithCompanyById(Long id);
+
+    // Checagem antes de trocar o e-mail, para devolver mensagem legivel em
+    // vez de deixar a constraint UNIQUE(email) estourar.
+    boolean existsByEmailIgnoreCase(String email);
 }
 
 

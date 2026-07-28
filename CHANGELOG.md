@@ -3,6 +3,53 @@
 Todas as mudanças relevantes do projeto são registradas aqui.
 Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
+## [V2.8] — Perfil e Troca de Senha
+
+Parte do item 13 do Backlog antecipada para a V2 na revisão de 12/jul (2FA e
+sessões ativas seguem na V3).
+
+### Adicionado
+- `GET/PUT /profile` e `PATCH /profile/password`. O usuário vem sempre do
+  token, nunca de parâmetro de rota — não existe editar perfil alheio aqui
+- **Troca de senha invalida sessões abertas.** Nova coluna
+  `users.password_changed_at`; o `JwtAuthenticationFilter` recusa qualquer
+  JWT emitido antes dela. Sem isso a troca de senha seria decorativa: o token
+  é stateless, então um token roubado continuaria valendo até expirar (60 min
+  por padrão) mesmo depois de a vítima trocar a senha
+- A sessão que fez a alteração recebe um token novo na resposta, para não se
+  auto-desconectar — só as **outras** caem
+- Trocar o e-mail exige a senha atual: o e-mail é a credencial de login, e
+  permitir a troca só com um token válido transformaria qualquer sessão
+  sequestrada em tomada de conta definitiva. Como o `sub` do JWT é o e-mail,
+  um token novo também é emitido nesse caso
+- Frontend: página de Perfil com aviso condicional ao mexer no e-mail
+  (explicando que ele é usado para entrar e pedindo a senha), e adoção
+  automática do token novo — sem isso o usuário levaria 401 na requisição
+  seguinte sem entender o motivo
+
+### Corrigido
+- **E-mail colado com espaço sobrando era recusado** com "must be a
+  well-formed email address" — confuso, porque o endereço estava correto. O
+  `@Email` do Bean Validation não apara espaços. Resolvido aparando no
+  construtor canônico do record, antes da validação rodar
+- Mensagens de validação dos DTOs de perfil passaram para português; o resto
+  da API já respondia em português, mas o Bean Validation caía no default em
+  inglês. **A padronização disso no restante dos DTOs continua pendente** —
+  pertence ao item "Padronização DTO/Response/Exception", ainda em aberto
+
+### Testado
+- 71 cenários no total (`ProfileServiceTest`, 8 novos): a troca marca o corte
+  que invalida tokens, senha atual errada é recusada, nova senha igual à
+  atual é recusada, trocar só o nome não exige senha nem reemite token,
+  trocar e-mail sem senha é recusado, e-mail duplicado é recusado, e-mail é
+  normalizado para minúsculas
+- Validado com **duas sessões simultâneas** do mesmo usuário contra o sistema
+  real: após a troca de senha, a sessão que trocou seguiu em `200` e a outra
+  passou a receber `401`; a senha antiga parou de autenticar e a nova
+  funcionou
+- Troca de e-mail validada pela tela: o token foi substituído sozinho e a
+  sessão continuou funcionando sem novo login
+
 ## [V2.7] — Notificações Internas
 
 Último 🔴 Must funcional da V2 (restam apenas Perfil, Exportação CSV/Excel e

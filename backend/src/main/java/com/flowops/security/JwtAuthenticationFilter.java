@@ -1,5 +1,6 @@
 package com.flowops.security;
 
+import com.flowops.entity.User;
 import com.flowops.repository.UserRepository;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -15,6 +16,9 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.temporal.ChronoUnit;
 
 @Component
 @RequiredArgsConstructor
@@ -42,10 +46,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             String email = jwtService.extractEmail(token);
 
             if (email != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-                UserDetails userDetails = userRepository.findByEmailAndActiveTrue(email)
-                        .orElse(null);
+                User user = userRepository.findByEmailAndActiveTrue(email).orElse(null);
+                UserDetails userDetails = user;
 
-                if (userDetails != null && jwtService.isTokenValid(token, email)) {
+                if (userDetails != null && jwtService.isTokenValid(token, email)
+                        && issuedAfterLastPasswordChange(token, user)) {
                     UsernamePasswordAuthenticationToken authToken =
                             new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
                     authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
@@ -59,5 +64,23 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
 
         filterChain.doFilter(request, response);
+    }
+
+    /**
+     * Recusa tokens emitidos antes da última troca de senha (V2.8).
+     * <p>
+     * A comparação trunca {@code passwordChangedAt} para segundos porque o
+     * claim {@code iat} do JWT tem precisão de segundo, enquanto a coluna
+     * guarda microssegundos: sem truncar, o token novo emitido no mesmo
+     * segundo da troca seria recusado junto com os antigos, e quem acabou de
+     * trocar a senha levaria 401 imediatamente.
+     */
+    private boolean issuedAfterLastPasswordChange(String token, User user) {
+        OffsetDateTime changedAt = user.getPasswordChangedAt();
+        if (changedAt == null) {
+            return true;
+        }
+        Instant cutoff = changedAt.toInstant().truncatedTo(ChronoUnit.SECONDS);
+        return !jwtService.extractIssuedAt(token).isBefore(cutoff);
     }
 }

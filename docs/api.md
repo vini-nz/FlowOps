@@ -36,6 +36,46 @@ Authorization: Bearer <token>
 }
 ```
 
+## Perfil
+
+Dados do **próprio usuário** (V2.8). Sem restrição por papel; o usuário vem
+do token, nunca de parâmetro de rota.
+
+| Método | Rota | Descrição |
+|---|---|---|
+| `GET` | `/profile` | Dados do usuário autenticado |
+| `PUT` | `/profile` | Atualiza nome e e-mail |
+| `PATCH` | `/profile/password` | Troca a senha |
+
+**Request de perfil:**
+```json
+{ "name": "Operador", "email": "operador@empresa.com", "currentPassword": "..." }
+```
+`currentPassword` só é exigida **quando o e-mail muda** — o e-mail é a
+credencial de login, então a troca não pode depender apenas de um token
+válido. E-mail já em uso retorna `409`; senha ausente ou errada, `401`.
+
+**Request de senha:**
+```json
+{ "currentPassword": "...", "newPassword": "mínimo 8 caracteres" }
+```
+Senha atual errada retorna `401`; nova senha igual à atual, `409`.
+
+### O campo `accessToken` da resposta
+
+Quando a alteração invalida o token em uso, a resposta traz um
+`accessToken` novo e **o cliente precisa adotá-lo** — caso contrário a
+requisição seguinte recebe `401`. Isso acontece em dois casos:
+
+- **Troca de senha:** marca `password_changed_at`, e o filtro passa a recusar
+  todo JWT emitido antes disso. É o que faz a troca de senha realmente
+  derrubar as outras sessões, em vez de só mudar o hash.
+- **Troca de e-mail:** o `sub` do JWT é o e-mail, então o token antigo deixa
+  de resolver o usuário.
+
+Nos demais casos (só o nome mudou), `accessToken` vem `null` e o token atual
+continua válido.
+
 ## Dashboard
 
 | Método | Rota | Descrição |
