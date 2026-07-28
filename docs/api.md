@@ -358,6 +358,27 @@ interpretar `domain_events.payload` (contrato por tipo de evento em
 `eventType` é exposto para permitir ícone/estilo por tipo no frontend, mas um
 tipo desconhecido não quebra nada: `description` cai no próprio `eventType`.
 
+## Notificações
+
+Notificações in-app do **próprio usuário** (V2.7), geradas a partir de
+`domain_events`. Sem restrição por papel: cada um lê e marca as suas. O
+destinatário vem sempre do token — nunca de parâmetro da requisição.
+
+| Método | Rota | Descrição |
+|---|---|---|
+| `GET` | `/notifications` | Lista paginada, mais recentes primeiro |
+| `GET` | `/notifications/unread-count` | `{ "count": 3 }` — usado pelo sino |
+| `PATCH` | `/notifications/{uuid}/read` | Marca uma como lida |
+| `PATCH` | `/notifications/read-all` | Marca todas, devolve `{ "updated": n }` |
+
+Só `STATUS_ALTERADO` e `RESPONSAVEL_ATRIBUIDO` geram notificação — eventos de
+rotina (checklist, evidência, itens de orçamento) ficam só na Timeline, para
+o sino não virar ruído. O destinatário é o responsável pela WorkOrder, e
+**nunca quem provocou o evento**.
+
+Uma notificação pertence a uma pessoa: tentar marcar como lida a de outro
+usuário, mesmo da mesma empresa, retorna `404`.
+
 ## Usuários
 
 | Método | Rota | Descrição |

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext.jsx'
+import NotificationBell from '../components/NotificationBell.jsx'
 import api from '../services/api.js'
 
 const STATUS_LABELS = {
@@ -45,6 +46,7 @@ export default function Dashboard() {
           </nav>
         </div>
         <div className="flex items-center gap-4">
+          <NotificationBell />
           <span className="text-sm text-gray-600">
             {user?.name} <span className="text-gray-400">({user?.role} — {user?.companyName})</span>
           </span>

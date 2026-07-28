@@ -428,6 +428,34 @@ CREATE TABLE domain_events (
 
 CREATE INDEX idx_domain_events_work_order_id ON domain_events(work_order_id, occurred_at);
 
+-- ----------------------------------------------------------------------------
+-- Notificações in-app (V2.7), geradas a partir de domain_events por um
+-- listener transacional. São por DESTINATÁRIO (user_id), não por evento: o
+-- mesmo fato pode gerar zero ou várias notificações, e cada pessoa marca a
+-- sua como lida sem afetar as demais.
+-- ----------------------------------------------------------------------------
+
+CREATE TABLE notifications (
+    id              BIGSERIAL PRIMARY KEY,
+    uuid            UUID NOT NULL UNIQUE DEFAULT gen_random_uuid(),
+    company_id      BIGINT NOT NULL REFERENCES companies(id),
+    user_id         BIGINT NOT NULL REFERENCES users(id),
+    work_order_id   BIGINT REFERENCES work_orders(id) ON DELETE CASCADE,
+
+    event_type      VARCHAR(50) NOT NULL,
+    message         VARCHAR(300) NOT NULL,
+    is_read         BOOLEAN NOT NULL DEFAULT FALSE,
+    read_at         TIMESTAMPTZ,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Consulta dominante: "minhas notificações, mais recentes primeiro".
+CREATE INDEX idx_notifications_user ON notifications(user_id, created_at DESC);
+-- Índice parcial para o contador de não lidas, que é chamado com frequência.
+CREATE INDEX idx_notifications_unread ON notifications(user_id) WHERE is_read = FALSE;
+
+COMMENT ON TABLE notifications IS 'Notificação in-app por destinatário (V2.7), derivada de domain_events.';
+
 -- ============================================================================
 -- Comentários de documentação (aparecem em qualquer client de banco)
 -- ============================================================================

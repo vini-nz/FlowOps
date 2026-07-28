@@ -3,6 +3,64 @@
 Todas as mudanças relevantes do projeto são registradas aqui.
 Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
+## [V2.7] — Notificações Internas
+
+Último 🔴 Must funcional da V2 (restam apenas Perfil, Exportação CSV/Excel e
+Padronização). Fecha também uma dívida técnica registrada desde a V2.1.
+
+### Adicionado
+- Notificações in-app geradas a partir de `domain_events`: tabela
+  `notifications` por **destinatário** (um mesmo fato pode virar zero ou
+  várias notificações, e cada pessoa marca a sua como lida sem afetar as
+  demais)
+- `NotificationListener` com `@TransactionalEventListener(AFTER_COMMIT)` e
+  `REQUIRES_NEW` — se a transação de negócio der rollback, **nada é
+  notificado**: ninguém recebe aviso de algo que não aconteceu. Uma falha ao
+  notificar é logada mas não propaga, porque notificação é efeito colateral e
+  não pode derrubar uma operação já confirmada no banco
+- API: listar (paginado), contador de não lidas, marcar uma e marcar todas.
+  O destinatário vem sempre do token, nunca de parâmetro da requisição
+- Frontend: sino com contador no cabeçalho de todas as telas, painel com as
+  10 mais recentes, marcar ao clicar e "marcar todas como lidas"
+
+### Regras de quem é notificado
+- Só `STATUS_ALTERADO` e `RESPONSAVEL_ATRIBUIDO` viram notificação. Notificar
+  cada item de checklist ou evidência transformaria o sino em ruído e faria o
+  usuário parar de olhar — o oposto do objetivo
+- O destinatário é o **responsável pela WorkOrder**, e nunca quem provocou o
+  evento: avisar alguém da própria ação é ruído puro
+- Uma notificação pertence a uma pessoa — aqui o isolamento por empresa não
+  basta, e um colega da mesma empresa não lê nem marca a notificação de outro
+
+### Dívida técnica quitada
+- **`recordEvent` duplicado em 4 serviços** (WorkOrder, Budget,
+  WorkOrderStep, Evidence), registrado em `docs/architecture.md` desde a
+  V2.1. Notificações precisariam se plugar em todos eles, o que tornaria a
+  duplicação um problema real e não só estético. Extraído para
+  `DomainEventService`, único ponto que grava em `domain_events` e publica o
+  evento de aplicação
+
+### Corrigido
+- **Timeline mostrava enum cru** para os 5 tipos de evento criados na V2.5 e
+  V2.6 (`CHECKLIST_ITEM_MARCADO`, `CHECKLIST_ITEM_DESMARCADO`,
+  `CHECKLIST_ITEM_ADICIONADO`, `EVIDENCIA_ANEXADA`, `EVIDENCIA_REMOVIDA`) —
+  eles caíam no fallback do `TimelineDescriptionFormatter`. Agora aparecem
+  como frase legível, ex: *Checklist marcado na etapa "Produção": Conferir
+  medidas com o projeto*
+
+### Testado
+- 63 cenários no total (`NotificationListenerTest`, 6 novos): notifica o
+  responsável, **não** notifica o autor da própria ação, não notifica sem
+  responsável, atribuição notifica, eventos de rotina não viram notificação,
+  e falha ao notificar não propaga
+- Validado contra o sistema real com dois usuários: o Operador movimentou uma
+  OS atribuída ao Técnico — o Técnico recebeu 3 notificações com mensagem
+  legível e o Operador ficou com 0. Depois o próprio Técnico agiu na sua OS e
+  o contador dele não subiu
+- Isolamento verificado: o Operador tentando marcar como lida uma notificação
+  do Técnico recebe `404`
+- Sino, contador e marcação validados pelo navegador, sem erro de console
+
 ## [V2.6] — Evidências por Etapa
 
 Fecha o item 3 do Backlog Detalhado, cuja parte de checklist saiu na V2.5.

@@ -62,8 +62,33 @@ public class TimelineDescriptionFormatter {
                     : "Item removido do orçamento: %s".formatted(node.path("description").asText());
             case "ORCAMENTO_APROVADO" -> "Orçamento aprovado";
             case "ORCAMENTO_RECUSADO" -> "Orçamento recusado";
+            // Eventos de checklist e evidencia (V2.5/V2.6) - ate a V2.7
+            // caiam no fallback e a Timeline mostrava o enum cru.
+            case "CHECKLIST_ITEM_MARCADO" -> checklistPhrase(node, "Checklist marcado");
+            case "CHECKLIST_ITEM_DESMARCADO" -> checklistPhrase(node, "Checklist desmarcado");
+            case "CHECKLIST_ITEM_ADICIONADO" -> checklistPhrase(node, "Item de checklist adicionado");
+            case "EVIDENCIA_ANEXADA" -> evidencePhrase(node, "Evidência anexada");
+            case "EVIDENCIA_REMOVIDA" -> evidencePhrase(node, "Evidência removida");
             default -> eventType;
         };
+    }
+
+    // Payload de checklist: {"etapa": "...", "item": "..."}
+    private String checklistPhrase(JsonNode node, String prefix) {
+        if (node == null) {
+            return prefix;
+        }
+        return "%s na etapa \"%s\": %s".formatted(
+                prefix, node.path("etapa").asText(), node.path("item").asText());
+    }
+
+    // Payload de evidencia: {"etapa": "...", "arquivo": "..."}
+    private String evidencePhrase(JsonNode node, String prefix) {
+        if (node == null) {
+            return prefix;
+        }
+        return "%s na etapa \"%s\": %s".formatted(
+                prefix, node.path("etapa").asText(), node.path("arquivo").asText());
     }
 
     private JsonNode parse(String payload) {

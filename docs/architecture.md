@@ -220,14 +220,16 @@ mantida, com risco real de as duas divergirem com o tempo. O custo aceito é
 uma query extra por transição (o `WorkOrder` é recarregado dentro de
 `updateStatus`), irrelevante no volume atual.
 
-Pelo mesmo motivo, `BudgetService` grava seus próprios eventos
-(`ORCAMENTO_CRIADO`, `ITEM_ADICIONADO`, `ITEM_REMOVIDO`,
-`ORCAMENTO_APROVADO`/`ORCAMENTO_RECUSADO`) com um `recordEvent` privado
-duplicado do mesmo método em `WorkOrderService`, em vez de extrair um
-serviço de eventos compartilhado agora — essa extração pertence ao item
-"Padronização Arquitetural" do Épico Dívida Técnica, que ainda não rodou;
-duplicar um helper de 10 linhas é mais barato que introduzir uma abstração
-nova no meio de uma feature que não é sobre isso.
+`BudgetService` também grava seus próprios eventos (`ORCAMENTO_CRIADO`,
+`ITEM_ADICIONADO`, `ITEM_REMOVIDO`, `ORCAMENTO_APROVADO`/
+`ORCAMENTO_RECUSADO`).
+
+> **Atualizado na V2.7:** na V2.1 cada serviço fazia isso com um
+> `recordEvent` privado duplicado, decisão consciente na época — duplicar um
+> helper de 10 linhas era mais barato que introduzir uma abstração no meio de
+> uma feature que não era sobre isso. Notificações mudaram o cálculo e a
+> extração aconteceu; hoje todos usam `DomainEventService` (ver seção "Um só
+> ponto grava evento" adiante).
 
 ## Itens de orçamento gravam snapshot, não referência viva ao catálogo
 
@@ -281,6 +283,37 @@ portanto preserva a ordem real de inserção). Alternativa descartada: trocar o
 default para `clock_timestamp()`, que resolveria na origem, mas alteraria o
 significado da coluna em dados já gravados e não ajudaria em eventos
 inseridos no mesmo microssegundo.
+
+## Um só ponto grava evento, e quem reage é desacoplado (V2.7)
+
+Até a V2.6 cada serviço tinha sua própria cópia privada de `recordEvent` —
+quatro implementações idênticas em `WorkOrderService`, `BudgetService`,
+`WorkOrderStepService` e `EvidenceService`. Era dívida técnica registrada
+desde a V2.1, tolerada enquanto era só duplicação estética. Notificações
+mudaram isso: precisariam se plugar nos quatro, e a alternativa era espalhar
+a lógica de notificação por todos eles.
+
+`DomainEventService` passou a ser o único ponto que escreve em
+`domain_events`. Além de persistir, publica um `WorkOrderEventOccurred`, e
+quem quiser reagir se inscreve — hoje só `NotificationListener`.
+
+Três decisões que sustentam isso:
+
+- **O evento publicado carrega valores simples, nunca entidades.** Os
+  consumidores rodam em `AFTER_COMMIT`, ou seja, depois que a transação
+  fechou: uma entidade LAZY passada ali estaria destacada e qualquer acesso a
+  associação estouraria `LazyInitializationException`.
+- **`AFTER_COMMIT` e não `AFTER_COMPLETION`.** Se a transação de negócio der
+  rollback, nada é notificado — o usuário nunca recebe aviso de algo que não
+  aconteceu. O listener abre a própria transação (`REQUIRES_NEW`), já que a
+  original terminou.
+- **Falha ao notificar é logada e engolida.** Notificação é efeito colateral;
+  não pode derrubar — nem desfazer — uma operação de negócio já confirmada no
+  banco. Há teste cobrindo exatamente isso.
+
+`TimelineDescriptionFormatter` é reaproveitado para montar a mensagem, o que
+mantém a mesma frase na Timeline e na notificação. Ele já tinha sido escrito
+prevendo esse segundo consumidor.
 
 ## Arquivos ficam fora do banco e fora do backend (V2.6)
 

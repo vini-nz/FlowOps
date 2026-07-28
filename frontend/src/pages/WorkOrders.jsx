@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import NotificationBell from '../components/NotificationBell.jsx'
 import api from '../services/api.js'
 
 const emptyForm = {
@@ -538,12 +539,15 @@ export default function WorkOrders() {
             <Link to="/workflow" className="text-gray-500 hover:text-flowops-700">Workflow</Link>
           </nav>
         </div>
+        <div className="flex items-center gap-3">
+          <NotificationBell />
         <button
           onClick={openCreateForm}
           className="rounded bg-flowops-600 px-4 py-2 text-sm font-medium text-white hover:bg-flowops-700"
         >
           Nova WorkOrder
         </button>
+        </div>
       </header>
 
       <main className="p-6">

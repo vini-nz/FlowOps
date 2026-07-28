@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext.jsx'
+import NotificationBell from '../components/NotificationBell.jsx'
 import api from '../services/api.js'
 
 export default function Workflow() {
@@ -131,6 +132,7 @@ export default function Workflow() {
             <span className="font-medium text-flowops-700">Workflow</span>
           </nav>
         </div>
+        <NotificationBell />
       </header>
 
       <main className="p-6">
