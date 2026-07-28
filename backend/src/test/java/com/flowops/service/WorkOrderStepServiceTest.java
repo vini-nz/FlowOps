@@ -9,7 +9,6 @@ import com.flowops.entity.WorkflowStepChecklistItem;
 import com.flowops.enums.StepStatus;
 import com.flowops.enums.WorkOrderStatus;
 import com.flowops.exception.BusinessRuleException;
-import com.flowops.repository.DomainEventRepository;
 import com.flowops.repository.WorkOrderRepository;
 import com.flowops.repository.WorkOrderStepChecklistItemRepository;
 import com.flowops.repository.WorkOrderStepRepository;
@@ -43,7 +42,7 @@ class WorkOrderStepServiceTest {
     @Mock
     private WorkOrderRepository workOrderRepository;
     @Mock
-    private DomainEventRepository domainEventRepository;
+    private DomainEventService domainEventService;
     @Mock
     private WorkOrderService workOrderService;
     @Mock
@@ -61,7 +60,7 @@ class WorkOrderStepServiceTest {
     @BeforeEach
     void setUp() {
         service = new WorkOrderStepService(
-                workOrderStepRepository, workOrderRepository, domainEventRepository, workOrderService,
+                workOrderStepRepository, workOrderRepository, domainEventService, workOrderService,
                 checklistItemRepository);
         actor = new User();
         actor.setId(9L);

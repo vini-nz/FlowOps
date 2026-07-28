@@ -12,7 +12,6 @@ import com.flowops.exception.BusinessRuleException;
 import com.flowops.repository.BudgetItemRepository;
 import com.flowops.repository.BudgetRepository;
 import com.flowops.repository.CatalogItemRepository;
-import com.flowops.repository.DomainEventRepository;
 import com.flowops.repository.WorkOrderRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -54,7 +53,7 @@ class BudgetServiceTest {
     @Mock
     private WorkOrderRepository workOrderRepository;
     @Mock
-    private DomainEventRepository domainEventRepository;
+    private DomainEventService domainEventService;
     @Mock
     private WorkOrderService workOrderService;
     @Mock
@@ -69,7 +68,7 @@ class BudgetServiceTest {
     void setUp() {
         budgetService = new BudgetService(
                 budgetRepository, budgetItemRepository, catalogItemRepository,
-                workOrderRepository, domainEventRepository, workOrderService, budgetPdfService);
+                workOrderRepository, domainEventService, workOrderService, budgetPdfService);
         actor = new User();
         actor.setId(9L);
     }
@@ -108,7 +107,7 @@ class BudgetServiceTest {
 
         assertThat(response.status()).isEqualTo(BudgetStatus.RASCUNHO);
         verify(workOrderService).applyDerivedStatus(COMPANY_ID, wo.getUuid(), WorkOrderStatus.ORCAMENTO_GERADO, actor);
-        verify(domainEventRepository).save(any());
+        verify(domainEventService).record(any(), any(), any(), any());
     }
 
     @Test

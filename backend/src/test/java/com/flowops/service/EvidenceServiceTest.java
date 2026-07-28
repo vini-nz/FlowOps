@@ -10,7 +10,6 @@ import com.flowops.enums.StepStatus;
 import com.flowops.enums.WorkOrderStatus;
 import com.flowops.exception.BusinessRuleException;
 import com.flowops.exception.ResourceNotFoundException;
-import com.flowops.repository.DomainEventRepository;
 import com.flowops.repository.EvidenceRepository;
 import com.flowops.repository.WorkOrderRepository;
 import com.flowops.repository.WorkOrderStepRepository;
@@ -42,7 +41,7 @@ class EvidenceServiceTest {
     @Mock private EvidenceRepository evidenceRepository;
     @Mock private WorkOrderRepository workOrderRepository;
     @Mock private WorkOrderStepRepository workOrderStepRepository;
-    @Mock private DomainEventRepository domainEventRepository;
+    @Mock private DomainEventService domainEventService;
     @Mock private StorageService storageService;
 
     private EvidenceService service;
@@ -61,7 +60,7 @@ class EvidenceServiceTest {
         properties.setUploadUrlExpirationMinutes(10);
 
         service = new EvidenceService(evidenceRepository, workOrderRepository,
-                workOrderStepRepository, domainEventRepository, storageService, properties);
+                workOrderStepRepository, domainEventService, storageService, properties);
 
         actor = new User();
         actor.setId(9L);
@@ -190,7 +189,7 @@ class EvidenceServiceTest {
 
         assertThat(response.sizeBytes()).isEqualTo(4096L);
         assertThat(evidence.getUploadedAt()).isNotNull();
-        verify(domainEventRepository).save(any());
+        verify(domainEventService).record(any(), any(), any(), any());
     }
 
     @Test

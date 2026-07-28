@@ -8,7 +8,6 @@ import com.flowops.enums.StepStatus;
 import com.flowops.enums.WorkOrderStatus;
 import com.flowops.exception.BusinessRuleException;
 import com.flowops.repository.ClientRepository;
-import com.flowops.repository.DomainEventRepository;
 import com.flowops.repository.UserRepository;
 import com.flowops.repository.WorkOrderRepository;
 import com.flowops.repository.WorkOrderStepChecklistItemRepository;
@@ -43,7 +42,7 @@ class WorkOrderServiceStatusGuardTest {
     @Mock private WorkOrderRepository workOrderRepository;
     @Mock private ClientRepository clientRepository;
     @Mock private UserRepository userRepository;
-    @Mock private DomainEventRepository domainEventRepository;
+    @Mock private DomainEventService domainEventService;
     @Mock private WorkflowTemplateRepository workflowTemplateRepository;
     @Mock private WorkflowStepRepository workflowStepRepository;
     @Mock private WorkOrderStepRepository workOrderStepRepository;
@@ -59,7 +58,7 @@ class WorkOrderServiceStatusGuardTest {
     @BeforeEach
     void setUp() {
         service = new WorkOrderService(
-                workOrderRepository, clientRepository, userRepository, domainEventRepository,
+                workOrderRepository, clientRepository, userRepository, domainEventService,
                 workflowTemplateRepository, workflowStepRepository, workOrderStepRepository,
                 workflowStepChecklistItemRepository, workOrderStepChecklistItemRepository);
         actor = new User();
@@ -128,7 +127,7 @@ class WorkOrderServiceStatusGuardTest {
         service.applyDerivedStatus(COMPANY_ID, workOrder.getUuid(), WorkOrderStatus.ORCAMENTO_GERADO, actor);
 
         assertThat(workOrder.getStatus()).isEqualTo(WorkOrderStatus.ORCAMENTO_GERADO);
-        verify(domainEventRepository).save(any());
+        verify(domainEventService).record(any(), any(), any(), any());
     }
 
     @Test
