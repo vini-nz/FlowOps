@@ -3,6 +3,62 @@
 Todas as mudanças relevantes do projeto são registradas aqui.
 Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
+## [V2.9] — Exportação CSV
+
+Penúltimo 🔴 Must da V2 — resta apenas "Padronização DTO/Response/Exception".
+
+### Adicionado
+- `GET /exports/work-orders` e `GET /exports/clients` em CSV, **respeitando os
+  mesmos filtros da tela** (status e busca): uma exportação que ignorasse o
+  filtro devolveria uma planilha diferente do que o usuário está vendo
+- Botão "Exportar CSV" nas telas de WorkOrders e Clientes
+- A exportação de Ordens inclui valor e situação do orçamento, carregados em
+  uma query para o lote inteiro (sem N+1)
+- Teto de 5.000 linhas por exportação: ela é síncrona e monta o arquivo em
+  memória, então sem limite uma empresa grande derrubaria o backend com um
+  clique. Acima disso o caminho é geração assíncrona, já prevista na V4
+
+### CSV em vez de XLSX, e por quê
+Gerar `.xlsx` exigiria Apache POI — dependência pesada para o ganho. Um CSV
+**bem feito** abre corretamente no Excel; o problema é que o CSV "cru" chega
+quebrado para o usuário brasileiro de três formas, todas tratadas em
+`CsvWriter`:
+
+- **BOM UTF-8** — sem ele o Excel assume a codificação local e "Instalação"
+  vira "InstalaÃ§Ã£o"
+- **Separador `;`** — o Excel pt-BR usa vírgula como separador decimal e
+  espera ponto-e-vírgula entre colunas; com vírgula a planilha inteira cai
+  numa coluna só
+- **Vírgula decimal** — `1234.56` não é reconhecido como número, e a coluna
+  deixa de somar
+
+Também há escape RFC 4180: campo com `;`, aspas ou quebra de linha entra
+entre aspas, com aspas internas duplicadas — sem isso uma observação com
+ponto-e-vírgula deslocaria todas as colunas seguintes daquela linha.
+
+### Corrigido
+- **Todo download via JavaScript perdia o nome do arquivo.** Numa requisição
+  CORS o navegador só entrega ao JS uma lista curta de headers de resposta, e
+  `Content-Disposition` não está nela — o arquivo chegava como `export.csv`
+  genérico. Resolvido com `Access-Control-Expose-Headers` no `SecurityConfig`.
+  Só apareceu ao testar o download **pelo navegador**: por `curl` o header
+  sempre esteve lá
+
+### Testado
+- 80 cenários no total (`CsvWriterTest`, 9 novos), cobrindo exatamente o que
+  é invisível numa inspeção casual: bytes do BOM, separador, vírgula decimal,
+  escape de separador/aspas/quebra de linha, CRLF e célula nula virando vazio
+  em vez da palavra "null"
+- Validado com dados-armadilha reais contra o sistema: cliente
+  "Marcenaria Ação & Cia", OS "Armário; sob medida" e observação
+  `Entregar; conferir medidas. Porta 30" reforçada`. O arquivo gerado foi
+  **re-parseado** com um leitor CSV: todas as linhas mantiveram a contagem
+  correta de colunas (11 e 7), provando que os `;` internos não quebraram a
+  planilha
+- Filtros conferidos (3 linhas sem filtro → 1 com `status=ORCAMENTO_GERADO`,
+  0 com `FINALIZADO`; 3 clientes → 2 com `search=Marcenaria`) e isolamento
+  multi-tenant (segunda empresa exporta 0 linhas; sem token, `401`)
+
 ## [V2.8] — Perfil e Troca de Senha
 
 Parte do item 13 do Backlog antecipada para a V2 na revisão de 12/jul (2FA e

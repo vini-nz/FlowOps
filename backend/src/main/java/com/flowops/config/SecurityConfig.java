@@ -79,6 +79,14 @@ public class SecurityConfig {
         configuration.setAllowedOrigins(List.of(allowedOrigins.split(",")));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("Authorization", "Content-Type"));
+        // Numa requisicao CORS o navegador so entrega ao JavaScript uma lista
+        // curta de headers de resposta; Content-Disposition nao esta nela. Sem
+        // expor explicitamente, todo download feito via fetch/axios (exportacao
+        // CSV, PDF do orcamento) perde o nome de arquivo montado pelo backend e
+        // cai num nome generico. Descoberto testando o download no navegador -
+        // pelo curl o header aparece normalmente, entao o problema nao aparece
+        // em teste de API.
+        configuration.setExposedHeaders(List.of("Content-Disposition"));
         configuration.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();

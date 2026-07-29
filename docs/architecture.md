@@ -284,6 +284,39 @@ default para `clock_timestamp()`, que resolveria na origem, mas alteraria o
 significado da coluna em dados já gravados e não ajudaria em eventos
 inseridos no mesmo microssegundo.
 
+## CSV correto é diferente de CSV válido (V2.9)
+
+A exportação gera CSV em vez de `.xlsx` para não trazer o Apache POI por um
+ganho pequeno. A troca é defensável, mas só se o CSV for gerado pensando em
+quem vai abri-lo: um arquivo separado por vírgula, em UTF-8 sem BOM e com
+ponto decimal é um CSV perfeitamente **válido** — e chega **quebrado** no
+Excel em português, de três formas simultâneas:
+
+| Sem tratamento | O que o usuário vê |
+|---|---|
+| UTF-8 sem BOM | `InstalaÃ§Ã£o` no lugar de `Instalação` |
+| Separador vírgula | A planilha inteira numa única coluna |
+| `1234.56` | Texto em vez de número; a coluna não soma |
+
+`CsvWriter` resolve os três (BOM, `;`, vírgula decimal) e aplica o escape do
+RFC 4180 adaptado ao separador — campo com `;`, aspas ou quebra de linha
+entre aspas, aspas internas duplicadas. Sem esse último detalhe, uma
+observação como `Entregar; conferir medidas` deslocaria todas as colunas
+seguintes daquela linha.
+
+Nada disso aparece lendo o conteúdo do arquivo num editor de texto: o CSV
+"errado" parece perfeitamente normal. Por isso os testes verificam os bytes
+do BOM e o escape diretamente, e a validação manual re-parseia o arquivo
+gerado conferindo a contagem de colunas por linha.
+
+**Efeito colateral descoberto no navegador:** numa requisição CORS o
+navegador só entrega ao JavaScript uma lista curta de headers de resposta, e
+`Content-Disposition` não está nela — todo download feito via `fetch`/axios
+perdia o nome montado pelo backend e caía num nome genérico. Corrigido com
+`setExposedHeaders` no `SecurityConfig`. Por `curl` o header sempre esteve
+presente, então esse tipo de defeito só aparece exercitando o caminho real do
+usuário.
+
 ## Troca de senha precisa derrubar sessão, e JWT stateless não faz isso sozinho (V2.8)
 
 O JWT do FlowOps é stateless: o servidor não guarda sessão, só valida

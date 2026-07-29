@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import NotificationBell from '../components/NotificationBell.jsx'
+import ExportButton from '../components/ExportButton.jsx'
 import api from '../services/api.js'
 
 const emptyForm = {
@@ -542,6 +543,11 @@ export default function WorkOrders() {
         </div>
         <div className="flex items-center gap-3">
           <NotificationBell />
+          <ExportButton
+            path="/exports/work-orders"
+            params={statusFilter ? { status: statusFilter } : undefined}
+            onError={setError}
+          />
         <button
           onClick={openCreateForm}
           className="rounded bg-flowops-600 px-4 py-2 text-sm font-medium text-white hover:bg-flowops-700"

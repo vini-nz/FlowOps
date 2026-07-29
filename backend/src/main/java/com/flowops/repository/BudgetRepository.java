@@ -4,6 +4,8 @@ import com.flowops.entity.Budget;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -22,4 +24,8 @@ public interface BudgetRepository extends JpaRepository<Budget, Long> {
     Optional<Budget> findByWorkOrderIdAndCompanyId(Long workOrderId, Long companyId);
 
     boolean existsByWorkOrderId(Long workOrderId);
+
+    // Exportacao (V2.9): busca os orcamentos de um lote de WorkOrders numa
+    // query so, para a planilha trazer o valor sem gerar um SELECT por linha.
+    List<Budget> findByWorkOrderIdIn(Collection<Long> workOrderIds);
 }

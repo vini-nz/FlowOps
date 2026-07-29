@@ -398,6 +398,34 @@ interpretar `domain_events.payload` (contrato por tipo de evento em
 `eventType` é exposto para permitir ícone/estilo por tipo no frontend, mas um
 tipo desconhecido não quebra nada: `description` cai no próprio `eventType`.
 
+## Exportação
+
+Exporta as listas principais em CSV (V2.9), **respeitando os mesmos filtros
+da tela**. Sem restrição adicional por papel: devolve os mesmos dados da
+listagem correspondente, que já é aberta a qualquer usuário autenticado —
+restringir só aqui seria teatro, bastaria percorrer as páginas.
+
+| Método | Rota | Parâmetros |
+|---|---|---|
+| `GET` | `/exports/work-orders` | `status` (opcional, mesmo filtro da lista) |
+| `GET` | `/exports/clients` | `search` (opcional, mesmo filtro da lista) |
+
+Resposta: `text/csv; charset=UTF-8` com `Content-Disposition: attachment` e
+nome no formato `ordens-de-servico-AAAA-MM-DD.csv`.
+
+O arquivo é gerado para abrir corretamente no **Excel em português**: BOM
+UTF-8 (acentuação), separador `;` (senão a planilha cai numa coluna só) e
+vírgula decimal (senão o Excel não reconhece os valores como número). Ver
+`docs/architecture.md`.
+
+Limite de **5.000 linhas** por exportação — ela é síncrona e monta o arquivo
+em memória.
+
+> **Para clientes JavaScript:** o download precisa passar pelo header
+> `Authorization`, então não funciona com um `<a href>` simples. O nome do
+> arquivo vem em `Content-Disposition`, exposto ao JS via
+> `Access-Control-Expose-Headers`.
+
 ## Notificações
 
 Notificações in-app do **próprio usuário** (V2.7), geradas a partir de
