@@ -11,9 +11,10 @@ services:
       - "5432:5432"
     volumes:
       - flowops_pgdata:/var/lib/postgresql/data
-      # Scripts em ordem alfabética: o DDL cria o schema, o seed popula depois.
-      - ./db/flowops_ddl.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
-      - ./db/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql:ro
+      # O schema NÃO é mais montado aqui (V3.0). Quem cria as tabelas e semeia
+      # os dados é o Flyway, na subida do backend — o mesmo caminho usado em
+      # produção. Montar o SQL no Postgres funcionava só localmente e mascarava
+      # o fato de que num banco gerenciado (Supabase) ninguém rodaria o script.
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-flowops} -d ${DB_NAME:-flowops}"]
       interval: 5s
@@ -54,6 +55,9 @@ services:
       storage:
         condition: service_healthy
     environment:
+      # Profile local. Só ele carrega o seed de demonstração via Flyway;
+      # em produção (prod) essa location não entra.
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
       DB_HOST: db
       DB_PORT: 5432
       DB_NAME: ${DB_NAME:-flowops}

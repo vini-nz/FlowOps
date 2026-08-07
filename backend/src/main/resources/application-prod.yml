@@ -1,0 +1,59 @@
+# Produção (Render + Supabase). Ativado com SPRING_PROFILES_ACTIVE=prod.
+#
+# Nenhum segredo mora aqui: tudo vem de variável de ambiente, sem valor
+# padrão para os sensíveis — se a variável faltar, a aplicação falha ao
+# subir em vez de silenciosamente usar a chave de exemplo do repositório.
+spring:
+  flyway:
+    # Só o schema. A location do seed não entra: dado de demonstração em
+    # produção é o tipo de coisa que ninguém percebe até um avaliador abrir
+    # o sistema e ver "Cliente Demonstração".
+    locations: classpath:db/migration
+
+  jpa:
+    show-sql: false
+    # Dialeto explícito: banco gerenciado costuma ficar atrás de um pooler
+    # (no Supabase, o Session Pooler), e a detecção automática depende de
+    # uma consulta de metadados que nem todo pooler responde bem. Declarar
+    # remove essa dependência do boot.
+    #
+    # Cuidado: NÃO usar 'hibernate.temp.use_jdbc_metadata_defaults: false'
+    # aqui. Parece a solução para o mesmo problema, mas desliga a detecção
+    # de dialeto por completo e a aplicação nem sobe — testado, o erro é
+    # "Unable to determine Dialect without JDBC metadata", que não dá
+    # nenhuma pista de qual configuração o causou.
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+
+  datasource:
+    hikari:
+      # Free tier de banco gerenciado tem limite baixo de conexões, e o
+      # Render pode manter instâncias antigas por alguns segundos durante o
+      # deploy. Pool enxuto evita estourar o limite e derrubar o deploy novo.
+      maximum-pool-size: ${DB_POOL_SIZE:5}
+      connection-timeout: 30000
+
+# Sem valor padrão de propósito. Em application.yml estas propriedades têm
+# default para o ambiente local rodar sem configuração; em produção esse
+# default seria um perigo silencioso — a chave JWT de exemplo está pública
+# no repositório, e qualquer pessoa poderia forjar um token válido. Aqui,
+# se a variável não estiver definida no provedor, a aplicação recusa subir.
+flowops:
+  jwt:
+    secret: ${JWT_SECRET}
+
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS}
+
+  storage:
+    endpoint: ${STORAGE_ENDPOINT}
+    public-endpoint: ${STORAGE_PUBLIC_ENDPOINT}
+    bucket: ${STORAGE_BUCKET}
+    access-key: ${STORAGE_ACCESS_KEY}
+    secret-key: ${STORAGE_SECRET_KEY}
+    region: ${STORAGE_REGION}
+
+logging:
+  level:
+    root: WARN
+    com.flowops: INFO
+    org.flywaydb: INFO

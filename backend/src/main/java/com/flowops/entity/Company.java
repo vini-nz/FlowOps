@@ -51,7 +51,7 @@ public class Company {
     private boolean active = true;
 
     // created_at/updated_at sao preenchidos pelo DEFAULT now() e pelo
-    // trigger set_updated_at() do PostgreSQL (ver flowops_ddl.sql) - o Java
+    // trigger set_updated_at() do PostgreSQL (ver V1__init_schema.sql) - o Java
     // nunca escreve nestas colunas, apenas as le de volta.
     @Column(name = "created_at", nullable = false, insertable = false, updatable = false)
     private OffsetDateTime createdAt;

@@ -1,0 +1,16 @@
+# Ambiente local (docker-compose). Ativado por padrão — ver spring.profiles.default.
+spring:
+  flyway:
+    # Inclui o seed de demonstração além do schema. Esta é a única diferença
+    # relevante em relação a produção: os dados de demo NUNCA entram em prod
+    # porque prod simplesmente não carrega esta location.
+    locations: classpath:db/migration,classpath:db/seed
+
+  jpa:
+    show-sql: ${SHOW_SQL:false}
+
+logging:
+  level:
+    root: INFO
+    com.flowops: DEBUG
+    org.flywaydb: INFO

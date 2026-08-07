@@ -7,16 +7,32 @@ spring:
   application:
     name: flowops-backend
 
+  # Sem profile explícito assume dev: rodar local é o caso comum, e um
+  # descuido aqui deve cair no ambiente inofensivo, nunca em produção.
+  profiles:
+    default: dev
+
   datasource:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:flowops}
     username: ${DB_USER:flowops}
     password: ${DB_PASSWORD:flowops}
     driver-class-name: org.postgresql.Driver
 
+  # Migrations versionadas (V3.0). Antes o schema vinha do flowops_ddl.sql
+  # montado à mão pelo docker-compose — o que não existe em provedor
+  # gerenciado como Supabase: o banco sobe vazio e a aplicação morre no
+  # boot na validação do Hibernate. O seed fica numa location separada,
+  # incluída apenas no profile dev.
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    baseline-version: 0
+
   jpa:
     open-in-view: false
     hibernate:
-      ddl-auto: validate   # o schema é criado pelo flowops_ddl.sql, nunca pelo Hibernate
+      ddl-auto: validate   # o schema é criado pelo Flyway, nunca pelo Hibernate
     properties:
       hibernate:
         format_sql: true

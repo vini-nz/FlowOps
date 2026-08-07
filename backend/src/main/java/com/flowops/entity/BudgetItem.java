@@ -12,7 +12,7 @@ import java.util.UUID;
 /**
  * Item de orcamento. description/unitPrice sao gravados como snapshot no
  * momento da criacao - mudancas futuras no CatalogItem nao afetam itens
- * ja adicionados a um orcamento (ver flowops_ddl.sql).
+ * ja adicionados a um orcamento (ver V1__init_schema.sql).
  */
 @Entity
 @Table(name = "budget_items")

@@ -48,13 +48,18 @@ docker compose up --build
 ```
 
 Isso vai:
-1. Criar o container do PostgreSQL 16 e rodar o schema (`flowops_ddl.sql`)
-   seguido dos dados de demonstração (`seed.sql`), automaticamente, só na
-   primeira vez que o volume é criado
+1. Criar o container do PostgreSQL 16 **vazio**
 2. Subir o MinIO (storage de evidências, V2.6) nas portas `9000` (API S3) e
    `9001` (console web). O bucket é criado sozinho na subida do backend
-3. Buildar a imagem do backend (Maven + Spring Boot) e subir na porta `8080`
+3. Buildar a imagem do backend (Maven + Spring Boot) e subir na porta `8080`.
+   Na subida, o **Flyway** cria as 15 tabelas e — por estar no profile `dev` —
+   também aplica os dados de demonstração
 4. Buildar a imagem do frontend (Vite dev server) e subir na porta `5173`
+
+> O schema é criado pelo Flyway, não por script montado no Postgres. É o
+> mesmo caminho usado em produção: num banco gerenciado (Supabase) ninguém
+> roda o script de inicialização por você, e um schema que só funciona
+> localmente esconderia esse problema até o dia do deploy.
 
 A primeira execução demora alguns minutos (download de dependências). As
 próximas são bem mais rápidas graças ao cache das camadas do Docker.
@@ -90,9 +95,14 @@ docker compose logs backend --tail=100
 Abra **http://localhost:5173** no navegador.
 
 O banco já sobe com uma empresa e usuários de demonstração (um para cada
-perfil: administrador, operador e técnico). As credenciais estão no arquivo
-`db/seed.sql` — abra esse arquivo para ver os e-mails cadastrados, a senha
-usada em todos eles está comentada logo acima do `INSERT` de usuários.
+perfil: administrador, operador e técnico). As credenciais estão em
+`backend/src/main/resources/db/seed/V100__seed_demo_data.sql` — abra esse
+arquivo para ver os e-mails cadastrados; a senha usada em todos eles está
+comentada logo acima do `INSERT` de usuários.
+
+> Esse seed **só existe no profile `dev`**. Em produção o banco sobe apenas
+> com o schema, e o primeiro administrador é criado a partir das variáveis
+> `FLOWOPS_BOOTSTRAP_*` (ver seção de variáveis de ambiente).
 
 Depois do login, você cai no Dashboard e em seguida pode navegar até
 Clientes para testar o CRUD completo do módulo.
@@ -126,6 +136,30 @@ docker compose down -v
 | `STORAGE_ENDPOINT` | Endpoint que o **backend** usa | `http://storage:9000` |
 | `STORAGE_PUBLIC_ENDPOINT` | Endpoint que o **navegador** usa — as URLs são assinadas para ele | `http://localhost:9000` |
 | `STORAGE_MAX_FILE_SIZE_MB` | Tamanho máximo por evidência | `15` |
+| `STORAGE_REGION` | Região usada para assinar as URLs | `us-east-1` |
+| `SPRING_PROFILES_ACTIVE` | `dev` (com seed) ou `prod` (sem seed) | `dev` |
+
+### Só em produção
+
+Em `prod` os segredos **não têm valor padrão**: se a variável faltar, a
+aplicação recusa subir em vez de usar silenciosamente a chave de exemplo que
+está pública neste repositório. São obrigatórias: `JWT_SECRET`,
+`CORS_ALLOWED_ORIGINS` e todas as `STORAGE_*`.
+
+Como o seed não roda em `prod`, o banco sobe sem nenhum usuário — e ninguém
+consegue entrar. Estas variáveis criam a primeira empresa e o primeiro
+administrador, e **só agem se o sistema estiver vazio** (reiniciar não
+duplica nada):
+
+| Variável | Descrição |
+|---|---|
+| `FLOWOPS_BOOTSTRAP_ADMIN_EMAIL` | E-mail do primeiro administrador |
+| `FLOWOPS_BOOTSTRAP_ADMIN_PASSWORD` | Senha inicial (mínimo 8 caracteres) |
+| `FLOWOPS_BOOTSTRAP_ADMIN_NAME` | Nome exibido (padrão: `Administrador`) |
+| `FLOWOPS_BOOTSTRAP_COMPANY_NAME` | Nome da empresa (padrão: `Minha Empresa`) |
+
+Depois do primeiro acesso elas podem ser removidas — a senha passa a ser
+gerenciada pela tela de Perfil.
 
 Os dois endpoints de storage são diferentes de propósito quando se roda via
 Docker: o backend fala com o container pela rede interna, mas a URL
@@ -144,9 +178,10 @@ debug e hot-reload.
 
 ```bash
 createdb flowops
-psql -d flowops -f db/flowops_ddl.sql
-psql -d flowops -f db/seed.sql
 ```
+
+Só isso. Não rode SQL na mão: o Flyway cria o schema e aplica o seed na
+primeira subida do backend, contanto que o profile seja `dev` (é o padrão).
 
 ### Backend
 

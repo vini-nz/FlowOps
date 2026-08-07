@@ -46,7 +46,7 @@ public class StorageConfig {
         S3Client client = S3Client.builder()
                 .endpointOverride(URI.create(properties.getEndpoint()))
                 .credentialsProvider(credentials())
-                .region(Region.US_EAST_1) // MinIO ignora, mas o SDK exige uma
+                .region(Region.of(properties.getRegion()))
                 .serviceConfiguration(S3Configuration.builder()
                         .pathStyleAccessEnabled(true)
                         .build())
@@ -61,7 +61,7 @@ public class StorageConfig {
         return S3Presigner.builder()
                 .endpointOverride(URI.create(properties.getPublicEndpoint()))
                 .credentialsProvider(credentials())
-                .region(Region.US_EAST_1)
+                .region(Region.of(properties.getRegion()))
                 .serviceConfiguration(S3Configuration.builder()
                         .pathStyleAccessEnabled(true)
                         .build())

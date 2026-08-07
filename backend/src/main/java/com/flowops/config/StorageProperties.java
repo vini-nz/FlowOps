@@ -26,6 +26,14 @@ public class StorageProperties {
     private String accessKey;
     private String secretKey;
 
+    /**
+     * Região usada para assinar as requisições. O MinIO local ignora, mas
+     * provedores reais não: a assinatura SigV4 inclui a região, então assinar
+     * com a região errada produz um erro de credencial inválida — enganoso,
+     * porque a credencial está correta.
+     */
+    private String region = "us-east-1";
+
     private int uploadUrlExpirationMinutes = 10;
     private int downloadUrlExpirationMinutes = 15;
     private int maxFileSizeMb = 15;
